@@ -1,0 +1,61 @@
+# dsh-agent-team-auto-orchestrator — 智能体团队编排器（纯宿主插件，无客户端 UI）
+#
+# ── 它做什么 ────────────────────────────────────────────────────────────────
+#   注册一条常驻 system-prompt 段（ctx.systemPrompt.section，order 250），
+#   让「判可拆性 → 并行 → 按自定义预设路由 → 任务板跟踪 → 主线程只做拆分与
+#   汇总」在**每个会话 / 每个预设 / desktop 与 web 两个构建**都生效，不依赖
+#   任何技能被加载（技能按需加载，prompt 段常驻）。
+#
+#   这是「双层机制」：
+#     · 软约束层 = 常驻注入 8 条规则（把团队编排从「用户点名才开」变成默认行为）
+#     · 硬约束层 = 工具层硬门（v0.2.0 起）：入域后必须先**真派活**才放行动手类工具。
+#       开关见下面 enforceTeamGate；置 false 则退回纯软约束（只注入、不拦）。
+#
+# ── 本机专属内容放哪（v0.3.2）───────────────────────────────────────────────
+#   预设路由表 / 业务域关键词 / profile 名 **不写在代码里**，改从
+#   `<DSH_HOME>/team-orchestrator.local.json` 读（Windows 通常是 %USERPROFILE%\.dsh\）。
+#   该文件在插件目录之外 → npm pack / git push 结构上打不进去。
+#   优先级：环境变量 > local.json > 本文件的 config > 代码默认（通用值）。
+#   热重载：改 local.json 后**下次工具调用即生效**（按 mtime 检测），无需重启；
+#           但它拼进的那段注入文本是**启动时求值**的 → 想让 presetRoutes 立刻反映
+#           到注入文本，仍需彻底退出 DSH 再启动。
+#
+# ── 为什么需要它 ────────────────────────────────────────────────────────────
+#   官方团队包 @deepseek-ai/dsh-experimental-agent-team 的 lib/index.js 里
+#   没有任何 systemPrompt 注入（已实测 grep 零命中），所以团队工具虽然在线，
+#   模型默认仍是单线程串行。本插件补的正是这条「下命令」的缺口。
+#
+# ── 开关（改完彻底退出 DSH 再启动生效）─────────────────────────────────────
+#   injectLaw        (默认 true)  是否注册常驻 prompt 段。置 false = 纯状态路由模式。
+#   enforceTeamGate  (默认 true)  是否启用工具层硬门（v0.2.0 新增）。
+#                       入域（fluent/plugin/dsh/preset）时：除豁免名单外**全部工具**
+#                       都要先真派活（subagent / subagent_fork / spawn_teammate）；
+#                       ⚠️ v0.3.0 起 team_task_create **不再**算开团队（只留痕不派活会被拒）。
+#                       未入域时：只拦动手类（pwsh/bash/write/edit/mcp__ansys-fluent__*）。
+#   gateMaxStrikes   (默认 4)     同一 turn 最多拦几次。4 = 连拦 4 次才放行，逼模型真派活。
+#                       v0.3.0 从 2 提到 4：因为「只建任务板」不再过关，2 次不够逼出派活。
+#   gateDomains      (默认四域)   哪些域触发「全量拦截」。
+#                       ⚠️ 想**关掉**硬门请用 enforceTeamGate: false；
+#                       不要用 gateDomains: [] —— 代码对空数组走判空回退默认四域，设空等于没关。
+#   gateHeavyTools / gateTeamTools（代码内置表，暂未开放覆盖）
+#
+# ── 回环路由（排查用，仅本机可访问）────────────────────────────────────────
+#   GET /dsh-team-orchestrator/status
+#       → 插件版本、注入开关、硬门开关、段名/order/字数、目标 profile 的 bundles
+#         快照、团队包是否已挂载（teamMounted）、本机配置层状态（localConfig）、
+#         最近 10 次拦截记录（gateLog）
+#
+# 🔴 绝不要再在 profile 的 cordis.patch.yml 里手写同一段 insert —— 同一 entry id
+#    插两行会触发 duplicate loader entry id。
+- insert:
+    - id: dsh-agent-team-auto-orchestrator
+      name: dsh-agent-team-auto-orchestrator
+      config:
+        injectLaw: true
+        enforceTeamGate: true
+        gateMaxStrikes: 4
+        gateDomains:
+          - fluent
+          - plugin
+          - dsh
+          - preset
