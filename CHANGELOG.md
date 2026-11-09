@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 1.0.1 — 2026-11-09
+
+### 插件市场元数据：新增 locale 显示名与描述
+
+- 新增 `locale/en.json`、`locale/zh.json`：插件列表 / 市场的显示名（Agent Team Orchestration / 智能体团队编排）与一句话功能描述。
+- `package.json`：`exports` 增加 `./locale/*.json`；`files` 白名单增加 `locale/*.json`（缺这行 npm 包里就没有 locale 文件）。
+- 运行代码（`lib/*.js`）无改动，行为与 1.0.0 完全一致。
+
 ## 1.0.0 — 2026-11-08
 
 ### 包名改为 `dsh-agent-team-auto-orchestrator`（npm 与 GitHub 统一）

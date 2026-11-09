@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-team-auto-orchestrator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DSH 智能体团队编排器：宿主端每轮常驻注入「团队编排铁律」+ 工具层硬门（只认真派活），把「开团队 + 并行派活 + 任务板闭环 + 成员复用」变成任何预设、任何会话的默认行为。本机专属内容（预设路由表 / 业务域关键词 / profile 名）外置到 <DSH_HOME>/team-orchestrator.local.json —— 发布包只含通用默认，结构上打不进任何本机信息。零遥测，仅一条本机回环状态路由。",
   "type": "module",
   "main": "lib/index.js",
@@ -11,7 +11,8 @@
   },
   "exports": {
     ".": "./lib/index.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -23,7 +24,8 @@
     "docs/**/*",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "locale/*.json"
   ],
   "license": "MIT",
   "repository": {
