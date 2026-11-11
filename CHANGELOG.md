@@ -18,6 +18,11 @@
 7. 新增 `subagent-reuse-hint`（只提示、不拦截）：要开 `subagent` 时若还有 ≥2 位空闲成员，提示一句「先复用」。
 8. 命名不规范（`bad-name`）改为**只记录、不拦截**。
 
+**终验补正（发布前，文档↔实现对齐）**
+
+- 注入模板正文残留的旧口径与新闸门矛盾已全部改写：`十一、` 节「派活只算三件事」补上 `send_message`（=四件事）；「动手类操作之前必须先派活」「一次开团、整场放行」「换 step 归零」等旧表述改为「只在 todo 标了【并行】时才受约束，不标即放行」；`四、` 节一处缩进异常且错位的段落已归位。
+- 改后终验全绿：`npm test` 126 通过 / EXIT 0、`npm pack` 11 个文件、`scan-private` 无敏感命中、源码与三处实装副本 SHA256 一致。
+
 **观测与测试**
 
 9. `/status.parallelGate` 新增 7 个纯观测字段：`dispatchHistogram` / `selfWorkTurns` / `serialSuspect` / `subagentHintHits` / `readonlyPwshHits` / `badNameHits` / `subagentBeforeRestartHits`（只用于观察，不参与任何判定）。
