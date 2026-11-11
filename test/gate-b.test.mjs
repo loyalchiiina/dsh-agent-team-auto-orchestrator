@@ -20,7 +20,7 @@ if (loopStart < 0 || loopEnd < 0 || loopEnd <= loopStart) {
 const body = src.slice(loopStart, loopEnd);
 
 const build = new Function(
-  "TEAM_TOOLS", "dispatchCounts",
+  "DISPATCH_TOOLS", "TEAM_OPEN_TOOLS", "dispatchCounts", "sessionDispatchSeen",
   markLine + "\n" + fns + "\n" +
   "return function runGate(events, minDispatches, state, sid) {\n" +
   "  var next = function () { return 'next'; };\n" +
@@ -28,13 +28,15 @@ const build = new Function(
   "  var lastGateDecision = { required: null, parallelTodos: null, todoTotal: null, kind: null };\n" +
   "  var noTodoFallbackHits = 0;\n" +
   body + "\n" +
-  "  return { dispatched: dispatchedCount, required: requiredDispatches, parallelTodos: parallelTodos, todoTotal: todoTotal, kind: gateKind, singleStep: singleStepMarked, pass: (requiredDispatches === 0 || dispatchedCount >= requiredDispatches) };\n" +
+  "  return { dispatched: dispatchedCount, required: requiredDispatches, parallelTodos: parallelTodos, todoTotal: todoTotal, kind: gateKind, singleStep: singleStepMarked, pass: (requiredDispatches === 0 || turnMaxStepDispatch >= requiredDispatches), turnMax: turnMaxStepDispatch };\n" +
   "};"
 );
 
-const TEAM_TOOLS = new Set(["subagent", "subagent_fork", "spawn_teammate"]);
+const DISPATCH_TOOLS = new Set(["subagent", "subagent_fork", "spawn_teammate", "send_message"]);
+// 1.3.3（#3）：F2 的置位集合独立于派活路数集合（不含 send_message）
+const TEAM_OPEN_TOOLS = new Set(["subagent", "subagent_fork", "spawn_teammate"]);
 const dispatchCounts = new Map();
-const runGate = build(TEAM_TOOLS, dispatchCounts);
+const runGate = build(DISPATCH_TOOLS, TEAM_OPEN_TOOLS, dispatchCounts, new Map());
 
 const call = (name, args) => ({ type: "tool/call", data: { name, arguments: args === undefined ? "{}" : args } });
 const todo = (items) => call("todo_write", JSON.stringify({ todos: items }));

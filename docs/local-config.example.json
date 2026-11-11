@@ -1,14 +1,17 @@
 {
-  "_comment": "team-orchestrator 本机专属配置示例 —— 请复制为 <DSH_HOME>/team-orchestrator.local.json 后改成自己的值使用；插件包内置此示例，实际生效的是本机那份 local.json，本示例本身不会被插件读取。",
-  "presetRoutes": {
-    "插件开发": "my-plugin-agent",
-    "数据处理": "my-data-agent",
-    "文档翻译": "my-doc-agent"
-  },
+  "_comment": "team-orchestrator 本机专属配置示例 —— 请复制为 <DSH_HOME>/team-orchestrator.local.json 后改成自己的值使用；插件包内置此示例，实际生效的是本机那份 local.json，本示例本身不会被插件读取。三条形态要点：① presetRoutes 必须是数组，元素需 key 与 presetId（label 可省），写成对象会被静默忽略（回落空表）；② tier 只能是 lean / balanced / turbo 三档之一；③ customValues 里只写要改的行为键（gateMinDispatches / gateMaxParallel / gateMaxStrikes / waitAgentGate / spawnReuseGate / enforceTeamGate），写在 local.json 顶层读不到。",
+  "presetRoutes": [
+    { "key": "plugin", "label": "插件/DSH 配置", "presetId": "my-plugin-agent" },
+    { "key": "translate", "label": "文档翻译", "presetId": "my-doc-agent" }
+  ],
   "domainKeywords": {
     "plugin": ["my-plugin-sdk"],
     "dsh": ["my-harness"],
     "fluent": ["my-cfd-tool"]
   },
-  "profileName": "desktop"
+  "profileName": "desktop",
+  "tier": "balanced",
+  "customValues": {
+    "gateMaxParallel": 8
+  }
 }

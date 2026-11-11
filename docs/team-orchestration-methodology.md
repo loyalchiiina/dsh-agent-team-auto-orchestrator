@@ -83,7 +83,7 @@ todo_write（豁免）→ 动手工具被拦 1 次 → team_task_create（算开
 
 ### 3.1 第一层 · 常驻注入（软约束，管方向）
 
-一段约 3848 字符的方法论（模板本体 3709 字符；替换本机 8 条路由与并行上限占位后 3846~3848 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3848），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 11 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
+一段约 3848 字符的方法论（模板本体 3709 字符；替换本机 8 条路由与并行上限占位后 3846~3848 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3848），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 12 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
 
 1. **每轮先判可拆性**（判独立性，不判难度）
 2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，声明路数封顶 `gateMaxParallel`（默认 6、本机 10）且**不含 lead 自己** —— 闸门按 `Math.min(并行条数, gateMaxParallel)` 计算，只数 `subagent` / `subagent_fork` / `spawn_teammate` 调用次数）
@@ -307,7 +307,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 **路 A（省事）**：装现成的 `dsh-agent-team-auto-orchestrator`（本文描述的插件），它已包含注入 + 硬门 + 状态路由。
 
 **路 B（自建，约 200 行）**：在你自己的宿主插件里实现三件事：
-1. 注册一条 `systemPrompt` 段（内容抄 §3.1 的 11 节）
+1. 注册一条 `systemPrompt` 段（内容抄 §3.1 的 12 节）
 2. 监听工具分发前置事件，实现 §3.2 的判定（三个细节一个都不能少）
 3. 注册一个只读状态路由（便于排查：当前配置 / 最近 10 次拦截记录）
 
@@ -330,7 +330,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
     - id: team-orchestrator
       name: dsh-agent-team-auto-orchestrator
       config:
-        injectLaw: true          # 是否注入 11 节方法论
+        injectLaw: true          # 是否注入 12 节方法论
         enforceTeamGate: true    # 是否启用工具层硬门
         gateMaxStrikes: 4        # 同一 turn 最多拦几次（推荐 4）
         gateDomains: [fluent, plugin, dsh, preset]   # 哪些域触发全量拦截

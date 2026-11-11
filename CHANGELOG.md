@@ -1,5 +1,73 @@
 # CHANGELOG
 
+## 1.3.3 — 2026-11-11
+
+本轮按用户实测会话 `session-8a8a6a44`（14:06→14:34）的因果链收口：通道选择完全正确（`subagent = 0`，全是团队成员），却被「计数口径」逼成乱建 —— `send_message` 把活派给 3 个空闲成员后闸门仍判「本 step 已真派活 0 路」，`edit`/`pwsh` 被拦；模型于是改用唯一能计数的 `spawn_teammate` 连建 `employee-6`…`employee-14` 直到 16/16 满员，满员后又退回 `subagent_fork`（11 次）。累计派活 27 次（spawn 16 + fork 11）、硬门真拦 16 次（edit 8 / pwsh 6 / wait 2）、`list_agents` 全程只 4 次、`employee-3` 一直空着。
+
+> **F1 / F3 / F4 / F5 的归属**：这四条闸门计数修正是 **1.3.2 发布（commit `dad1cf9`）之后**才写进代码的 —— 已发布版 `lib\index.js`（1,946 行）里没有 `DISPATCH_TOOLS` / `turnMaxStepDispatch` / `spawnReuseGate`，已发布版 CHANGELOG（699 行）的 1.3.2 节也没有这段叙述。因此它们**首次发布于 1.3.3**，逐条见下；npm 上的 1.3.2 **不含**这些改动，请以本节为准。
+
+### 修复：F1 / F3 / F4 / F5 —— 闸门计数修正（**首次发布于 1.3.3**）
+
+四条修正直接对应上面那次会话暴露的问题（该会话 27 次派活里 16 次是被闸门逼出来的新建、`list_agents` 全程只调 4 次）：
+
+- **F1 `send_message` 计入派活路数**：新增 `DISPATCH_TOOLS`（`subagent`/`subagent_fork`/`spawn_teammate`/`send_message`）替换计数用的 `TEAM_TOOLS`。`send_message` 仍在 `EXEMPT_TOOLS`（随时可调、不被拦），但本闸门是**扫会话事件**计数，不依赖调用入口，豁免不会让它漏计。
+- **F3 放行判据改「本 turn 内单步最多派了几路」**：新增 `turnMaxStepDispatch`（`turn/start` 重置、每步峰值取 max），放行条件由 `dispatchedCount >= required` 改为 `turnMaxStepDispatch >= required`。四档判定链一字未改。「分步凑数」仍拦得住：每次只派 1 路，任一步峰值都 =1。
+- **F4 `spawn_teammate` 前置复用校验**：取**最近一次** `list_agents` 结果（按 `tool/call` 的 callId 与 `tool/result` 配对，从 `message.content[*].text` 解析 JSON 数组，统计 `role==='teammate' && status==='inactive'`）。花名册在 120 秒内且空闲 ≥1 → **拒绝新建**；花名册缺失/过期/解析失败 → 要求先 `list_agents`（**不因为查不到就放行**）。开关 `spawnReuseGate`：`enforce`（默认）/ `warn`（只记 log）/ `off`。
+- **F5 拒绝文案直接点名**：`【复用优先】当前有 N 位空闲成员：a、b、c。` + 「先把这批活用 send_message 分给它们（一次发满），确实分不完才新建。」+「若花名册已过期，先调 list_agents 再派。」
+- 新增 `/status.parallelGate` 观测字段：`turnMaxStepDispatch`、`idleMembers`、`rosterAgeMs`、`spawnReuseGate`、`spawnReuseHits`、`spawnReuseWaitHits`。
+- 花名册解析只在遇到 `list_agents` 的 result 时做一次并按 `seq` 缓存，不做每次调用的全量 `JSON.parse`。
+- **注入正文零改动**（本批只改闸门逻辑，模板仍 3,709 字符、运行时 3,848 / 3,846）；四档判定块与改前逐字节一致。
+- 测试：新增 `test/gate-f1f3f4f5.test.mjs`，覆盖 F1 计入、F3 峰值与 reset、F4 五种花名册状态与 warn/off、F5 文案三段、F2 跨 turn、按 seq 缓存（用例数见下文「测试」一节的实测值）；三套既有用例（16 + 28 + 7）断言值零改动 —— 只把测试脚手架的计数集合与 pass 判据同步到新实现。
+
+### 修复：F2 `wait_agent` 跨 turn 判定（治误拦）
+
+新增按会话粘住的 `sessionDispatchSeen`（扫事件时只要出现任一派活工具就置位，`turn/start` **不清空**）。`wait_agent` 若在本会话内**任意时刻**真派过活 → 放行（照旧记 `gateLog.kind = "wait-before-full-dispatch"`）；从未派过活仍按 `waitAgentGate`（默认 `warn` 放行 + 记账，`enforce` 落进原有 strike/deny），1.1.0 D7 要治的「先等结果再派活」串行伪装照样拦。`/status.parallelGate` 新增 `sessionsWithDispatchSeen`。
+
+### 修复：`/status` 暴露 wait 放行归属
+
+`gateLog` 的 wait 分支本来就写了 `released`（取值 `f2` / `warn` / `deny`，分别对应「本会话真派过活 → 放行」「`waitAgentGate` 非 `enforce` → 只观察」「落进原有 strike/deny 真拦」），但 `/status` 的 `gateLog[i]` 映射只搬 `tool` / `domains` / `turn` / `at` / `dispatched` / `required` / `kind` 七项，把 `released` 漏掉了 —— 排障时只看到「被 wait 拦了」，看不出它是「因为有派活被放行」还是「warn 档放过」还是「真拦」。现在每条 `gateLog` 条目统一带 `released`：wait 分支给 `f2` / `warn` / `deny`，其余条目（`gate-deny`、`roster-not-checked`、`approval-missing`、`config-fallback` 等）一律给 `null`（显式 `null`，不是省略键、不是 `undefined`，前端不必判 `undefined`）。源码：`lib\index.js` L1954–L1957（`released: (g.released || null)`）；累计计数另有 `/status` 的 `waitReleaseCounts`（`f2` / `warn` / `deny` 三个数，L2016）。
+
+### 修复：命名档下 `local.json` 的显式键可覆盖 preset
+
+改动前：命名档（`lean` / `balanced` / `turbo`）走 `resolveTierPreset` **直接返回字面量**，`local.json` 里写的 6 个行为键（`gateMinDispatches` / `gateMaxParallel` / `gateMaxStrikes` / `waitAgentGate` / `spawnReuseGate` / `enforceTeamGate`）**一个都不能覆盖**；而 `lib\index.js` 的注释又写着「local.json 优先于 cordis config / 代码默认」—— 文档与实现互相矛盾，典型事故就是「在 turbo 档里把闸门关了却没生效」。
+
+现在改为 **`local.json`（显式提供）> 命名档 preset > 代码默认**（`buildActiveTier`，L316–L345），「显式提供」的判据是 `Object.prototype.hasOwnProperty`（`pickLocalOverride`，L289–L314）：
+
+- 写 `false` / `0` / `"off"` **也算显式提供** —— 真值判断会把 `0` 当成「没写」而漏掉覆盖，这正是原事故的另一半；
+- **非法值不覆盖**：区间外整数、非法枚举一律保持 preset 原值（函数返回 `undefined`），且不会让整份配置失效；
+- 只在值与 preset **不同**时才记进 `overriddenKeys`（L340–L343），与 preset 相同的显式写值不算「覆盖」。
+
+新增观测：`/status.tiers.overriddenKeys` 列出当前档被 `local.json` 显式覆盖掉的键名（空数组 = 完全按 preset 跑，L1982）；`custom` 档本身即用户显式值，不单列（L355）。
+
+**故意不纳入覆盖的两个键**：`maxMembers` / `maxActiveSubagents` —— 它们是宿主现读的实测值，让 `local.json` 覆盖等于「拿假值压真值」（L282 注释即此意）；要改这两个只能改 preset 或找宿主。
+
+另：`enforceTeamGate` 被归一化成 **布尔** `true` / `false`（`"on"` / `"true"` / `"1"` → `true`，`"off"` / `"false"` / `"0"` → `false`，L301–L306），不是字符串 `"off"` —— 因为闸门判据是 `=== false`。所以 `/status.tiers.values.enforceTeamGate` 显示 `false` 即表示「已关闸」（`!!ACTIVE_TIER.enforceTeamGate`，L1988）。
+
+### 追加：B5 重复派提醒（注入词，v2 已落）
+
+注入第五节已有「派活前除了查「谁空闲」，还要**对一眼上一步派过什么** —— 同一个活不要重复派两遍」。实测依据：同一成员 16 秒内（15:14:58 / 15:15:14）收到几乎一样的活。本轮在 README 第五节要点里补上该条并给出实测依据，注入正文未再改动。
+
+### 文档：注入节数口径校正（11 节 → 12 节）
+
+`LAW_TEXT_TEMPLATE` 的序号标题实际有 **12** 个（〇、先判，再动手 ＋ 一～十一）。此前 README（中文功能描述 / English 描述 / 「注入的编排方法论：11 节」标题 / 节标题清单 / 「节数」口径行）、`docs\team-orchestration-methodology.md`（§3.1 / 路 B 第 1 步 / 配置 `injectLaw` 注释）、`cordis.patch.yml`（第 10 行注释）均误写为 **11 节**，本次统一为 **12 节**；`package.json` 的 description 本来就写「12 节」，未动。同时把 README 节标题清单里第 9 节从「九、任务板：每批派了什么、给了谁、做到哪了」改回与代码逐字一致的「九、任务板：派了活就要留痕」（另有 5 处短标题按代码补全：〇 先判，再动手 / 一 要不要交出去：两条判据 / 二 交给谁：看「能不能反悔」/ 八 跨会话要能接上 / 十一 工具层有一道硬门）。本文件 1.1.2 / 1.3.0 等历史节里的「11 节」是当时的记录，保留原样不改。
+
+### 口径（实测，非推算）
+
+注入模板本体 **3,709 UTF-16 字符 / 3,709 码点 / 8,862 UTF-8 字节 / 65 段**（源码数组块含引号缩进共 4,074 字符）；占位符 `@@ROUTES@@` ×1 / `@@MAXPAR@@` ×2 / `@@MINDISP@@` ×2，无其它 `@@`；运行时 `buildLawText` 实测 **3,848（gateMaxParallel = 10）/ 3,846（= 6）**，渲染后无 `@@` 残留。推导：`3,709 − 10 + 185 + 2×(2−10) + 2×(1−11) = 3,848`（`routeLine` 实测 **185** 字符；两处 `@@MINDISP@@` 占位符各 **11** 字符，换成一位数基础门槛）。旧文把 `routeLine` 记成 183、把 `@@MINDISP@@` 记成 10 字符 —— 两个错 **+2 / −2 恰好抵消**，所以 3,848 是侥幸正确的结果，不是推导正确的证据（详见下文「1.2.0 未发布期修订」的口径条）。
+
+### 测试
+
+`test\` 下**五个**测试文件实测 **96/96** 全绿（核对时刻 **2026-11-11 16:41**，代码已冻结：`lib\index.js` 118,357 B / 2,253 行）：`gate-b` 28 / `gate-maxparallel` 16 / `singlestep-first` 7 / `gate-f1f3f4f5` 27（原 20 + F2 五例 + 后续追加 2 例）/ `config-tier-spawnreuse` **18**（10 → 18，新增 8 例覆盖「local.json 显式键覆盖命名档」与「/status 暴露 released / overriddenKeys」）。`gate-b` 与 `gate-maxparallel` 的**脚手架**各补一个 `sessionDispatchSeen` 形参（不补则真实代码里的新语句越界），**断言期望值零改动**。注：本节早前写的是「四文件合计 76」、其后一度是「88/88」—— 都是代码侧并发追加测试时的中间值；代码已于 2026-11-11 16:40 冻结，**本条即为冻结后的终值**（96 = 16 + 28 + 7 + 27 + 18，`^FAIL` 行数 0，`npm test` 与逐文件单跑两种跑法结果一致）。
+
+### 已知限制
+
+`sessionDispatchSeen` 按会话粘住且不随进程重启持久化：重启后本会话的历史事件仍会被扫到（事件流在会话里），所以「派过活」不会因重启丢失；但跨会话不共享 —— 这是刻意的，避免 A 会话的派活替 B 会话开绿灯。
+
+### 已知限制（运行态未验证）
+
+- **F2 跨 turn `wait_agent` 放行**：本版只做代码走查（`sessionDispatchSeen` 按会话粘住、`turn/start` 不清空、`released` 三值归属），**未做运行态构造测试**。原因是该分支要求会话已被打上域标记（`lib\index.js` L1708 的 `if (!inDomain && !isHeavy(toolName)) return next();` 在 L1855 的 wait 分支之前），而域标记只由**用户消息文本**经 `detectDomains()` 决定（L1612），不匹配域词的会话里 `wait_agent` 根本进不到 F2 分支。首次遇到「跨 turn 先 wait 结果被拒」时请回来核这一条。
+- 其余三条（**F1** `send_message` 计入派活路数、**F3** 本 turn 单步峰值放行、**F4/F5** spawn 前置复用校验 + 点名空闲成员）**均已在运行态实测通过**。
+
 ## 1.3.2 — 2026-11-11
 
 ### 新增：查花名册留痕 + 派活先报批（只留痕，不拦截）
@@ -19,11 +87,12 @@
 ### 修正
 
 - CHANGELOG 1.3.1 节有四处字符损坏（控制字符吞字导致 `agent_preset` / `exports["./client"]` / `read` / `test\` 显示不全），已修复。代码不受影响。
-## 1.3.1 — 2026-11-11（首次发布，内容与 1.3.0 完全一致）
+## 1.3.1 — 2026-11-11（与 1.3.0 逐字节相同；当时误判 1.3.0 未发布而绕号重发）
 
-- 版本号取 1.3.1 而非 1.3.0：1.3.0 在一次被中断的 `npm publish` 中留下了 npm 侧的孤儿暂存标记（registry 文档里查不到该版本、`npm stage list` 也显示无暂存，但 `publish` 恒报 `E409 Cannot publish over previously staged version`），无法用任何命令清除，故绕过该号。代码与 1.3.0 一字不差。
+- 版本号取 1.3.1 而非 1.3.0：1.3.0 的 `npm publish` 一度返回 `E409 Cannot publish over previously staged version`，当时 `npm view` 查不到该版本、`npm stage list` 也显示无暂存，据此判断为 npm 侧孤儿暂存标记且无法清除，遂绕过该号重发。**2026-11-11 16:22 事后核实：1.3.0 实际已完整发布成功** —— registry 上存在该版本，发布时刻 `2026-11-11T03:24:01Z`（北京时间 11:24:01），tarball SHA1 `2d3353a0f7f6cb24002a8dcf3e6854beb645df5e`，解包 11 个文件齐全，`lib\index.js` 94,218 B / SHA256 `7EE8DDEC57FFABAF13EA928B3C51087CFBA0AD0D4099284BF16961CD5C4CB91E`。1.3.1 于 `03:27:06Z` 发布，两版 `lib\index.js` 是**同一个 git blob**（`3b7a5ddbb85df51dce5233b71712324ba429ab60`，94,218 B），仅 `package.json` 的 `version` 不同 —— 故「代码与 1.3.0 一字不差」成立，但 1.3.1 并非 1.3.0 的替代品，两者等价。
+- 1.3.0 于 `2026-11-11T06:02:02Z` 被标为 `deprecated`，deprecated 文案复述了上面那条错误判断（「孤儿暂存标记未能完整发布」）。该版本实际完整可用；要去掉这条误导提示，须由用户在批准后执行 `npm deprecate dsh-agent-team-auto-orchestrator@1.3.0 ""`（本次不动 registry）。
 
-- 版本号 1.2.0 → 1.3.0：1.2.0 从未发布到 npm（npm 上最新仍是 1.0.1），本版把「未发布期」全部改动一次性发出。
+- 版本号 1.2.0 → 1.3.0：1.2.0 从未发布到 npm（发布 1.3.0 的那一刻 npm 上最新仍是 1.0.1，1.3.0 于 `03:24:01Z` 成为第一个带上「未发布期」全部改动的版本）。
 - 注入正文改为方法论版 11 节，并叠加 v2 的 10 条修订：小任务开新代理必亏 / agent_preset 白名单降级句 / N 个独立活同一步分给 N 个空闲成员 / 不重复派同一个活 / 任务板仅在可能跨重启时建 / wait_agent 只能派完再用 / 真·小任务免派与「不写 todo 按基础门槛算」兜底。
 - 移除设置页面板：删 lib\client.js，package.json 去掉 dsh.client 与 exports["./client"] —— 不再有客户端 bundle，改完只需重启宿主。
 - EXEMPT_TOOLS 补 read / glob / grep（compress 一族此前已豁免），纯只读工具不再被团队硬门拦截。
@@ -121,7 +190,7 @@
 ### 口径（实测，非推算）
 
 - 模板本体：**3709 UTF-16 字符 / 3709 码点 / 8862 UTF-8 字节 / 65 行**（v4 前为 3305 / 7924 / 61 行；v3 前为 3153 / 7606 / 59 行）；占位符 `@@ROUTES@@`×1、`@@MAXPAR@@`×2、`@@MINDISP@@`×2（3 种 / 5 处），**无其它 `@@`**。
-- 运行时注入长度（本机 8 条预设路由）：**3848**（`gateMaxParallel: 10`）/ **3846**（`: 6`）；推导：`3709 − 10 + 183 + 2×(2−10) + 2×(1−10) = 3848`（`: 6` 时两处 `@@MAXPAR@@` 各换 1 位数，`2×(1−10)` → 3846）。注：本机 `routeLine` 实测 **183**（反解自真实渲染输出，旧文写 185 属凑巧抵平的错值）。
+- 运行时注入长度（本机 8 条预设路由）：**3848**（`gateMaxParallel: 10`）/ **3846**（`: 6`）；推导：`3709 − 10 + 185 + 2×(2−10) + 2×(1−11) = 3848`（`: 6` 时两处 `@@MAXPAR@@` 各换 1 位数，`2×(2−10)` → `2×(1−10)` → 3846）。注：本机 `routeLine` 实测 **185**（按 `buildLawText` 真实渲染输出逐字符数得，8 条 `presetRoutes` 用全角「｜」连接）；本条曾把 `routeLine` 误记为 183、把 `@@MINDISP@@` 占位符误记为 10 字符（实际 **11** 字符），**两个错 +2 / −2 恰好抵消**，3,848 因此侥幸正确 —— 结果对不等于推导对，这里按实测值订正。
 - 硬门四档判定代码（`requiredDispatches` 计算链、主放行行、`buildDenyReason` 调用）**逐字未改**。
 
 ### 测试
