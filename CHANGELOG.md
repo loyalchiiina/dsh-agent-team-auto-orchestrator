@@ -1,16 +1,35 @@
 # CHANGELOG
 
+## 1.3.2 — 2026-11-11
+
+### 新增：查花名册留痕 + 派活先报批（只留痕，不拦截）
+
+- `parallelGate.rosterHintHits`：本轮出现动手类或派活动作、但还没 `list_agents` 过 → 记一条 `roster-not-checked`。计数点在总开关之前，**闸门关着也照记**。
+- `parallelGate.approvalMissingHits`：一次派 ≥2 路、或新建常驻成员，而本轮没用 `ask_user_question` 问过 → 记一条 `approval-missing`；**第 1 路静默通过**，小任务不刷屏。
+- `parallelGate.approvalAskedThisTurn`：本轮是否问过。
+- 三条都**只 warn、绝不 deny**，四档判定链一字未改。
+
+### 注入正文（61 → 65 段，3,305 → 3,709 字符）
+
+- 派活前 `list_agents` 提为固定开场动作（原来只在某节里一句）。
+- 新增 ④「派活先报批」：一次派 ≥2 路或新建成员时，先 `ask_user_question` 一次性问清「这批派几路 / 分别给谁 / 你同意吗」；三种情形免问（用户说过直接干或无人值守、只派 1 路且纯只读、复用已同意过的同一批成员）。
+- 新增「子代理会话 ID 不可寻址」：`send_message` 只能发 `list_agents` 返回的名字，子代理跑起来就叫不动了。
+- 运行时注入 3,848 字符（上限 10 档）/ 3,846（上限 6 档）。
+
+### 修正
+
+- CHANGELOG 1.3.1 节有四处字符损坏（控制字符吞字导致 `agent_preset` / `exports["./client"]` / `read` / `test\` 显示不全），已修复。代码不受影响。
 ## 1.3.1 — 2026-11-11（首次发布，内容与 1.3.0 完全一致）
 
 - 版本号取 1.3.1 而非 1.3.0：1.3.0 在一次被中断的 `npm publish` 中留下了 npm 侧的孤儿暂存标记（registry 文档里查不到该版本、`npm stage list` 也显示无暂存，但 `publish` 恒报 `E409 Cannot publish over previously staged version`），无法用任何命令清除，故绕过该号。代码与 1.3.0 一字不差。
 
 - 版本号 1.2.0 → 1.3.0：1.2.0 从未发布到 npm（npm 上最新仍是 1.0.1），本版把「未发布期」全部改动一次性发出。
-- 注入正文改为方法论版 11 节，并叠加 v2 的 10 条修订：小任务开新代理必亏 / gent_preset 白名单降级句 / N 个独立活同一步分给 N 个空闲成员 / 不重复派同一个活 / 任务板仅在可能跨重启时建 / wait_agent 只能派完再用 / 真·小任务免派与「不写 todo 按基础门槛算」兜底。
-- 移除设置页面板：删 lib\client.js，package.json 去掉 dsh.client 与 xports["./client"] —— 不再有客户端 bundle，改完只需重启宿主。
-- EXEMPT_TOOLS 补 ead / glob / grep（compress 一族此前已豁免），纯只读工具不再被团队硬门拦截。
+- 注入正文改为方法论版 11 节，并叠加 v2 的 10 条修订：小任务开新代理必亏 / agent_preset 白名单降级句 / N 个独立活同一步分给 N 个空闲成员 / 不重复派同一个活 / 任务板仅在可能跨重启时建 / wait_agent 只能派完再用 / 真·小任务免派与「不写 todo 按基础门槛算」兜底。
+- 移除设置页面板：删 lib\client.js，package.json 去掉 dsh.client 与 exports["./client"] —— 不再有客户端 bundle，改完只需重启宿主。
+- EXEMPT_TOOLS 补 read / glob / grep（compress 一族此前已豁免），纯只读工具不再被团队硬门拦截。
 - 插件自带 cordis.patch.yml 的 gateMaxParallel 由 10 降为 6（母包仍 10，本机实际注入不受影响）。
 - 新增 GET /status 的 dbg 诊断字段（纯只读，用于定位闸门判定现场）。
-- 新增 	est\ 三个测试文件（合计 51 用例）与 scripts\scan-private.mjs（prepublishOnly 脱敏闸门）。
+- 新增 test\ 三个测试文件（合计 51 用例）与 scripts\scan-private.mjs（prepublishOnly 脱敏闸门）。
 
 ## 1.2.0 未发布期修订 — 2026-11-10（版本号仍 1.2.0，未 bump）
 
@@ -69,16 +88,48 @@
 
 > 说明：注入文本 `@@MINDISP@@` 因第 9 条新增一处引用，出现次数由 1 变 2（仍是同一种占位符，`buildLawText` 的 split/join 全局替换逻辑不变）。
 
+### 追加（同版本规则修订 v3）：花名册留痕（只记账、不拦）
+
+实测证据（被监控会话）：23:00–00:03 段它**真在用**员工 —— `employee-1/2/6` 各被 `send_message` 5 次、`employee-3/4` 各 3 次，表扬 `employee-13` 时还引用了它上一轮说过的话（说明在复用上下文）；**09:36 之后彻底改道**：21 次派活里 **20 次 `subagent`**（全部未填 `agent_preset`）、只有 1 次 `send_message`；而 `list_agents` 一共 16 次调用、**最后一次在 00:00:31，09:36 之后 0 次**。
+→ 结论：**它不是不愿复用，是根本没查花名册**。而原硬门只数派活次数、不看通道，所以「先查花名册」这条建议零强制力。
+
+本轮两处改动：
+
+1. **注入第五节开头新增**（放在「本对话有自己的成员池…」之前）：**开工第一步就查花名册** —— 动手前先 `list_agents`（跟 `todo_write` 并列，都是每轮的固定开场动作），**不查就派活 = 违规**。
+2. **注入第十一节末尾新增**：派活前没查过花名册的，会往 `gateLog` 记一条 `roster-not-checked`（不拦，只留痕）—— 连续出现，说明你在凭印象派活。
+3. **闸门侧新增 `noteRosterTool(exec, toolName)` 记账函数**：`list_agents` 与 `subagent` / `subagent_fork` / `spawn_teammate` 全在 `EXEMPT_TOOLS` 里、走不到闸门判定体，所以该函数**在 `isExempt` 之前调用**（仍是监听器入口最前面，`toolName` 取到就记）。规则：本轮查到 `list_agents` → `rosterCheckedThisTurn = true`；派活工具被调用且本轮未查 → `rosterHintHits++` 并 `gateLog.push({ tool, domains, turn, dispatched, required, kind: 「roster-not-checked」 })`（沿用 10 条上限）。turn 变化（`sessionDomains.turn` 变化，或新用户消息 `agent/inbox/claimed`）时 `rosterCheckedThisTurn` 重置为 false。
+4. **`/status.parallelGate` 新增两个观测字段**：`rosterCheckedThisTurn`（本轮是否查过）与 `rosterHintHits`（累计「未查即派」命中数）。
+
+> **本改动只留痕、不拦**：四档判定（`requiredDispatches` 计算链）、主放行行 `if (requiredDispatches === 0 || dispatchedCount >= requiredDispatches) return next();`、`buildDenyReason` 调用与 `strike` 计数**一字未动**；`noteRosterTool` 本身 `try/catch` 全包，留痕失败也不影响放行。
+
+### 追加（同版本规则修订 v4）：派活先报批 + 子代理不可寻址（只留痕、不拦）
+
+用户原话：「此外他创建子代理的时候从来不经过我批准，直接就甩出去了，也不问我是不是要这么做」—— 这与 11-09 就提过的「安排任务前执行前需要审批，除非开启无人值守模式」是同一件事，此前一直没落到插件里。同批补上「子代理不可寻址」这条有实测支撑的事实。
+
+实测证据（同一会话）：`send_message` 发给 `employee-1 … employee-13` 共 **27 次全部成功**；发给子代理 UUID 共 **5 次全部** `active teammate "…" not found`。
+
+本轮五处改动（3 处注入词 + 1 处代码 + 1 处观测字段）：
+
+1. **注入第五节新增（子代理不可寻址）**：`send_message` 的 `target` 只能填 `list_agents` 返回的名字；子代理（`subagent`）的会话 ID 不可寻址，发给它一定报 `not found` —— 想让它继续干，只能在它还在跑的时候发，跑完就再也叫不动。
+2. **注入第五节新增 ⑤（派活先报批）**：一次要派 ≥2 路、或要新建常驻成员时，先用 `ask_user_question` **一次性**问清「这批派几路、分别给谁、你同意吗」，拿到同意再发 —— 不许逐个问，更不许不问就甩出去。三种情形不用问：用户说过「直接干 / 无人值守 / 别问」；只派 1 路且纯只读；复用已同意过的同一批成员继续干同一批活。
+3. **注入第二节末尾补呼应句**（lead 原话写「第四节」，实际「交给谁」是第二节）：生米煮成熟饭最忌讳：派出去就撤不回来（子代理尤其 —— 它跑着时你也叫不动）。
+4. **注入第十一节末尾补**：派活前没问过审批的，`gateLog` 会记一条 `approval-missing`（不拦，只留痕）—— 连续出现说明你在自作主张，该停下来问一句了。
+5. **闸门侧 `noteRosterTool(exec, toolName)` 内同批记账**（**不重复遍历事件流**）：`ask_user_question` → `approvalAskedThisTurn = true`；派活工具（`TEAM_TOOLS`）且本轮没问过、且「已派过 ≥1 路 **或** 本工具是 `spawn_teammate`」→ `approvalMissingHits++` 并 `gateLog.push({ …, kind: "approval-missing" })`（第 1 路静默通过，避免小任务刷屏）。turn 变化（新用户消息同一处重置）与 `rosterCheckedThisTurn` 一起重置。`/status.parallelGate` 新增 `approvalAskedThisTurn` 与 `approvalMissingHits` 两个观测字段。
+
+> **本改动只留痕、不拦**：绝不 deny、绝不动 `requiredDispatches`、四档判定链与主放行行**一字未改**（与备份逐字 `IDENTICAL`）。另修一处实现细节：`gateLog` 裁剪从「函数末尾统一剪一次」改为**每处 `push` 之后就剪** —— 因为该函数被 `try/catch` 全包，两段之间任何异常都会被吞掉、末尾裁剪就跑不到（旧写法导致 roster 自测用例 5 出现 `len=18`）。
+
 ### 口径（实测，非推算）
 
-- 模板本体：**3153 UTF-16 字符 / 3153 码点 / 7606 UTF-8 字节 / 59 行**；占位符 `@@ROUTES@@`×1、`@@MAXPAR@@`×2、`@@MINDISP@@`×2（3 种 / 5 处），**无其它 `@@`**。
-- 运行时注入长度（本机 8 条预设路由）：**3292**（`gateMaxParallel: 10`）/ **3290**（`: 6`）；推导：`3153 − 10 + 185 + 2×(2−10) + 2×(1−11) = 3292`。
+- 模板本体：**3709 UTF-16 字符 / 3709 码点 / 8862 UTF-8 字节 / 65 行**（v4 前为 3305 / 7924 / 61 行；v3 前为 3153 / 7606 / 59 行）；占位符 `@@ROUTES@@`×1、`@@MAXPAR@@`×2、`@@MINDISP@@`×2（3 种 / 5 处），**无其它 `@@`**。
+- 运行时注入长度（本机 8 条预设路由）：**3848**（`gateMaxParallel: 10`）/ **3846**（`: 6`）；推导：`3709 − 10 + 183 + 2×(2−10) + 2×(1−10) = 3848`（`: 6` 时两处 `@@MAXPAR@@` 各换 1 位数，`2×(1−10)` → 3846）。注：本机 `routeLine` 实测 **183**（反解自真实渲染输出，旧文写 185 属凑巧抵平的错值）。
 - 硬门四档判定代码（`requiredDispatches` 计算链、主放行行、`buildDenyReason` 调用）**逐字未改**。
 
 ### 测试
 
 - `node --check` 通过；`gate-maxparallel` 16/16、`gate-b` **28/28**（原 21 + 本轮新增 7 例：22 同一步 2 路放行 / 23 上一步派 1 路、本步动手 → 计数归零 → 拒 / 24 分步凑数 1+1 仍拒 / 25 同一步内补满 3 路放行 / 26 无 `step/start` 靠 `data.step` 分窗 / 27 step 边界不清空 todo 契约 / 28 无 step 信号 → 整轮累加兼容）、`singlestep-first` 7/7（合计 **51/51**）；既有 21 条断言零改动（它们的事件不带 step，走整轮累加兜底）。
+- v3 追加：新增功能自测 `_test-roster-hint.mjs`（从真实文件切出 `noteRosterTool` 函数体，21 条断言全过）：未查即派 → `gateLog` 出现 `roster-not-checked`、`rosterHintHits` 0→1、且**无 deny 返回值**；先 `list_agents` 再派 → 不记 hint；turn 变化 → `rosterCheckedThisTurn` 回到 false；非派活工具不记 hint；`gateLog` 仍截到 10 条；`dispatchCounts` 缺失时 `required` 回落 `lastGateDecision.required`（不瞎猜）。
 - 仅两处**字面量期望**随正文改动同步（逻辑未削弱）：① `gate-maxparallel` 用例 07 把「封顶 N」改为「当前上限 N 路」，期望数组 `[1,1,1,0,2,0,-1]` → `[2,2,2,0,2,0,-1]`（新文案在第三、第十二节各出现一次）；② `gate-b` 用例 17 的 `law.includes("十一、并行声明即契约")` → `law.includes("十、预设路由")`（重排后预设路由为第十节）。
+- v4 追加：新增功能自测 `_test-approval-hint.mjs`（从真实文件切出 `noteRosterTool` 函数体，**29/29** 全过）：第 1 路派活未审批 → 不记；第 2 路 → 记 1 条 `kind="approval-missing"` 且 `approvalMissingHits=1`、`dispatched/required` 正确；先 `ask_user_question` 再派（含 `spawn_teammate`）→ 不记；`spawn_teammate` 首路未审批 → 记；turn 变化 → `approvalAskedThisTurn` 回 false 并从「第 1 路不记」重新开始；`enforceTeamGate: false` 时同样留痕且仍 `return next()`；非派活工具（`pwsh`/`todo_write`/`read`）不记；连 15 次 → 计数 15 且 `gateLog` 截到 10 条；花名册与审批两段互不干扰。既有 `_test-roster-hint.mjs` 21/21、`_test-roster-gateoff.mjs` 20/20 仍全绿（**两个 harness 未改**）。
 
 
 ## 1.2.0 — 2026-11-09

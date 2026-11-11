@@ -83,7 +83,7 @@ todo_write（豁免）→ 动手工具被拦 1 次 → team_task_create（算开
 
 ### 3.1 第一层 · 常驻注入（软约束，管方向）
 
-一段约 3292 字符的方法论（模板本体 3153 字符；替换本机 8 条路由与并行上限占位后 3290~3292 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3292），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 11 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
+一段约 3848 字符的方法论（模板本体 3709 字符；替换本机 8 条路由与并行上限占位后 3846~3848 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3848），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 11 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
 
 1. **每轮先判可拆性**（判独立性，不判难度）
 2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，声明路数封顶 `gateMaxParallel`（默认 6、本机 10）且**不含 lead 自己** —— 闸门按 `Math.min(并行条数, gateMaxParallel)` 计算，只数 `subagent` / `subagent_fork` / `spawn_teammate` 调用次数）
@@ -467,7 +467,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 
 | 项 | 数值 |
 |---|---|
-| 注入成本 | 约 **3363 字符 / 轮**（模板本体 3204；替换本机 8 条预设路由与 `@@MAXPAR@@` 并行上限占位后 3361（上限 6）~3363（上限 10），本机配 `gateMaxParallel: 10` 故实际 3363；每轮、每个会话都发，是永久 token 成本） |
+| 注入成本 | 约 **3848 字符 / 轮**（模板本体 3709；替换本机 8 条预设路由与 `@@MAXPAR@@` 并行上限占位后 3846（上限 6）~3848（上限 10），本机配 `gateMaxParallel: 10` 故实际 3848；每轮、每个会话都发，是永久 token 成本） |
 | 误伤成本 | 单步任务被拦 1 次（多数模型第一次被拦就改派）；最坏 4 次 |
 | 运行成本 | 零写入、零 spawn、零联网、零遥测；只有一条**本机回环**状态路由 |
 
