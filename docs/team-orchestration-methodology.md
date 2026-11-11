@@ -27,7 +27,7 @@
 
 ## 2. 组件全景：官方 4 个包 + 1 个编排插件
 
-官方把团队拆成四层，你只需要开一个开关（组合包），其余是零件：
+官方把团队拆成四个层级，你只需要开一个开关（组合包），其余是零件：
 
 | 组件（npm 包） | 职责 | 必须知道的关键事实 |
 |---|---|---|
@@ -83,10 +83,10 @@ todo_write（豁免）→ 动手工具被拦 1 次 → team_task_create（算开
 
 ### 3.1 第一层 · 常驻注入（软约束，管方向）
 
-一段约 3848 字符的方法论（模板本体 3709 字符；替换本机 8 条路由与并行上限占位后 3846~3848 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3848），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 12 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
+一段约 4412 字符（模板本体 4254 字符；替换本机 8 条路由与并行上限占位后 4410~4412 字符；本机并行上限配 10，故实际注入 4412 字符）。
 
 1. **每轮先判可拆性**（判独立性，不判难度）
-2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，声明路数封顶 `gateMaxParallel`（默认 6、本机 10）且**不含 lead 自己** —— 闸门按 `Math.min(并行条数, gateMaxParallel)` 计算，只数 `subagent` / `subagent_fork` / `spawn_teammate` 调用次数）
+2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，声明路数封顶 `gateMaxParallel`（默认 6、本机 10）且**不含 lead 自己** —— 闸门按 `Math.min(并行条数, gateMaxParallel)` 计算，只数 `subagent` / `subagent_fork` / `spawn_teammate` / `send_message` 调用次数，1.3.2 起 `send_message` 也计入派活路数）
 3. **派活通道选择**（见 §5.1；并写明"预设枚举排除自身"的降级规则）
 4. **任务板只留痕，不等于派活**（建完必 claim → reassign → complete；每轮收口上轮遗留）
 5. **你只做四件事**：拆任务 → 派活 → 收结果 → 合并验收（不亲自跑长活）
@@ -100,7 +100,7 @@ todo_write（豁免）→ 动手工具被拦 1 次 → team_task_create（算开
 在工具分发层拦截，判定规则只有一条：
 
 ```
-本轮是否出现过 subagent / subagent_fork / spawn_teammate 调用？
+本轮是否出现过 subagent / subagent_fork / spawn_teammate / send_message 调用？
   ├─ 是 → 放行
   └─ 否 → 拒绝，并给出「先派活、再留痕」的过关路径
 ```

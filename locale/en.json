@@ -2,6 +2,6 @@
   "name": "dsh-agent-team-auto-orchestrator",
   "meta": {
     "title": "Agent Team Orchestration",
-    "description": "v1.3.3 · Keeps team orchestration active in every turn: injects the dispatch law and a tool-layer gate, so parallel delegation, task-board tracking and member reuse are the default in any preset or session."
+    "description": "v1.4.0 · Keeps team orchestration active in every turn: injects the dispatch law and a tool-layer gate, so parallel delegation, task-board tracking and member reuse are the default in any preset or session."
   }
 }

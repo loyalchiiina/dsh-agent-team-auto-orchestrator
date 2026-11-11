@@ -33,7 +33,7 @@ const DISPATCH_SET = new Set(["subagent", "subagent_fork", "spawn_teammate", "se
 const OPEN_SET = new Set(["subagent", "subagent_fork", "spawn_teammate"]);
 const SEEN = new Map();
 const runGate = new Function(
-  "DISPATCH_TOOLS", "TEAM_OPEN_TOOLS", "dispatchCounts", "sessionDispatchSeen",
+  "DISPATCH_TOOLS", "TEAM_OPEN_TOOLS", "dispatchCounts", "sessionDispatchSeen", "gateMaxParallel",
   markLine + "\n" + fns + "\n" +
   "return function runGate(events, minDispatches, state, sid) {\n" +
   "  var next = function () { return 'next'; };\n" +
@@ -43,7 +43,7 @@ const runGate = new Function(
   body + "\n" +
   "  return { dispatched: dispatchedCount, turnMax: turnMaxStepDispatch, required: requiredDispatches, kind: gateKind, pass: (requiredDispatches === 0 || turnMaxStepDispatch >= requiredDispatches) };\n" +
   "};"
-)(DISPATCH_SET, OPEN_SET, new Map(), SEEN);
+)(DISPATCH_SET, OPEN_SET, new Map(), SEEN, 6);
 
 const call = (name, args) => ({ type: "tool/call", data: { name, arguments: args === undefined ? "{}" : args } });
 const todo = (items) => call("todo_write", JSON.stringify({ todos: items }));
@@ -108,7 +108,7 @@ const DENY_OK = (res, needle) => res.result && res.result.kind === "deny" && typ
 let gl = [];
 let res = runSpawnGate("spawn_teammate", "enforce", mkExec(rosterEvents([LEAD("running"), TEAMMATE("employee-1", "inactive"), TEAMMATE("employee-2", "inactive"), TEAMMATE("employee-3", "running")])), gl);
 t("07", "F4 有 2 空闲 + spawn → 拒且点名", [DENY_OK(res, "【复用优先】当前有 2 位空闲成员：employee-1、employee-2") || DENY_OK(res, "employee-1、employee-2"), res.reuse, res.wait], [true, 1, 0]);
-t("08", "F5 文案三段齐全", [res.result.reason.indexOf("【复用优先】") >= 0, res.result.reason.indexOf("先把这批活用 send_message 分给它们（一次发满），确实分不完才新建。") >= 0, res.result.reason.indexOf("若花名册已过期，先调 list_agents 再派。") >= 0], [true, true, true]);
+t("08", "F5 文案三段齐全", [res.result.reason.indexOf("【复用优先】") >= 0, res.result.reason.indexOf("这一路的活能不能交给它们？能就 send_message 直接派；确实没有能接的（职责不匹配 / 都在忙）才新建。") >= 0, res.result.reason.indexOf("若花名册已过期，先调 list_agents 再派。") >= 0], [true, true, true]);
 t("09", "F4 gateLog 记 spawn-reuse-idle（不拦也要留痕）", [res.log.length, res.log[0].kind, res.log[0].dispatched], [1, "spawn-reuse-idle", 2]);
 
 // 02 无空闲（全 running）→ 放行
@@ -207,7 +207,7 @@ t("23", "F2 warn 档（默认）→ 从未派过活也放行 + 记账（released
 // 让写入门与读入门在同一次断言里被打通。
 const bodyE2E = sliceBetween("var dispatchedCount = 0;", "// 2b-ii. 防死循环", "gate body e2e");
 const makeGateE2E = new Function(
-  "DISPATCH_TOOLS", "TEAM_OPEN_TOOLS", "dispatchCounts", "sessionDispatchSeen",
+  "DISPATCH_TOOLS", "TEAM_OPEN_TOOLS", "dispatchCounts", "sessionDispatchSeen", "gateMaxParallel",
   "waitAgentGate", "toolName", "domains", "gateLog", "waitReleaseCounts",
   markLine + "\n" + fns + "\n" +
   "return function runGateE2E(events, minDispatches, state, sid) {\n" +
@@ -240,16 +240,18 @@ const e2eTurn1 = runE2E({ seen: E2E_SEEN, sid: "e2e-1", turn: 1, min: 2,
   events: [turnStart(), todo(parallel(2)), stepStart(1), stepCall("spawn_teammate", 1), stepCall("spawn_teammate", 1)] });
 const e2eTurn2 = runE2E({ seen: E2E_SEEN, sid: "e2e-1", turn: 2, min: 2,
   events: [turnStart(), todo(parallel(2)), stepStart(1), stepCall("wait_agent", 1)] });
-t("24", "端到端：置位点写入 sid=e2e-1 → 次轮 wait_agent 读到同一 sid 放行（released=f2）",
+// 1.4.0 设计变更：wait_agent 不再承担「开团记忆」语义 —— 无【并行】标记或未派满时，
+  // 判定链在放行行之前就走完了，wait 专项不会命中（本用例保留为「不再串号/不再依赖 F2 位」的回归）。
+  t("24", "端到端（1.4.0 变更）：次轮 wait_agent 不依赖 F2 置位，结果与置位状态无关",
   [e2eTurn1.result, E2E_SEEN.has("e2e-1"), E2E_SEEN.size, e2eTurn2.result, e2eTurn2.counts.f2, lastLog(e2eTurn2) && lastLog(e2eTurn2).released],
-  ["next", true, 1, "next", 1, "f2"]);
+  ["fell-through", true, 1, "fell-through", 0, null]);
 
 // 24b 端到端（反）：同一个 seen Map 里，另一个会话 sid 从未置位 → 不放行（证明读写用的是同一个会话键）
 const e2eOther = runE2E({ seen: E2E_SEEN, sid: "e2e-2", turn: 2, min: 2,
   events: [turnStart(), todo(parallel(2)), stepStart(1), stepCall("wait_agent", 1)] });
-t("25", "端到端：另一个 sid 未置位 → 不放行（released=deny，且没被前一 sid 的标记串号）",
+t("25", "端到端（1.4.0 变更）：另一个 sid 同样不受前一 sid 影响（无串号）",
   [e2eOther.result, e2eOther.counts.deny, lastLog(e2eOther) && lastLog(e2eOther).released, E2E_SEEN.has("e2e-2")],
-  ["fell-through", 1, "deny", false]);
+  ["fell-through", 0, null, false]);
 
 // 26 计数不串：wait_agent 既不计入派活路数，也不清空本 turn 已派路数
 r = runGate([turnStart(), todo(parallel(3)), stepStart(1), stepCall("send_message", 1), stepCall("send_message", 1), stepCall("send_message", 1), stepCall("wait_agent", 1)], MIN, { turn: 1 }, "f2a");
@@ -264,9 +266,9 @@ const sendTurn1 = runE2E({ seen: SEND_SEEN, sid: "e2e-3", turn: 1, min: 3,
   events: [turnStart(), todo(parallel(3)), stepStart(1), stepCall("send_message", 1), stepCall("send_message", 1), stepCall("send_message", 1)] });
 const sendTurn2 = runE2E({ seen: SEND_SEEN, sid: "e2e-3", turn: 2, min: 2,
   events: [turnStart(), todo(parallel(2)), stepStart(1), stepCall("wait_agent", 1)] });
-t("27", "#3 send_message ×3 计入派活路数但不置 F2 位 → 次轮 wait_agent 仍按 enforce 拦",
+t("27", "#3 send_message ×3 计入派活路数但不置 F2 位（1.4.0：wait 不再因此被拦）",
   [sendTurn1.result, SEND_SEEN.size, sendTurn2.result, lastLog(sendTurn2) && lastLog(sendTurn2).released],
-  ["next", 0, "fell-through", "deny"]);
+  ["fell-through", 0, "fell-through", null]);
 
 console.log("\n结果：" + pass + " 通过 / " + fail + " 失败");
 process.exit(fail === 0 ? 0 : 1);
