@@ -83,10 +83,10 @@ todo_write（豁免）→ 动手工具被拦 1 次 → team_task_create（算开
 
 ### 3.1 第一层 · 常驻注入（软约束，管方向）
 
-一段约 1600 字符的规则，随 system prompt **每轮、每个会话**发送。七条：
+一段约 3292 字符的方法论（模板本体 3153 字符；替换本机 8 条路由与并行上限占位后 3290~3292 字符，取决于 `gateMaxParallel`，本机配 10 故实注 3292），随 system prompt **每轮、每个会话**发送。下面按机制归为七类（完整 11 节原文见 `lib/index.js` 的 `LAW_TEXT_TEMPLATE`）：
 
 1. **每轮先判可拆性**（判独立性，不判难度）
-2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，上限 8 含自己）
+2. **可拆就并行**（默认 2~3 路，独立块 4~6 路，声明路数封顶 `gateMaxParallel`（默认 6、本机 10）且**不含 lead 自己** —— 闸门按 `Math.min(并行条数, gateMaxParallel)` 计算，只数 `subagent` / `subagent_fork` / `spawn_teammate` 调用次数）
 3. **派活通道选择**（见 §5.1；并写明"预设枚举排除自身"的降级规则）
 4. **任务板只留痕，不等于派活**（建完必 claim → reassign → complete；每轮收口上轮遗留）
 5. **你只做四件事**：拆任务 → 派活 → 收结果 → 合并验收（不亲自跑长活）
@@ -189,14 +189,14 @@ team_task_create(
 
 对 `inactive` 成员发一条 `send_message`，它会**从冷状态被唤回、接着自己原有的会话上下文继续干活**——这就是复用，**不需要重新 `spawn_teammate`**。
 
-#### `maxMembers` 是「累计创建数」（**本机 8 / 官方默认 16**）
+#### `maxMembers` 是「累计创建数」（**官方默认 16，本机 1.1.2 起也设 16**）
 
 官方服务的 `maxMembers` 指的是**这个会话累计创建过多少个成员**，不是并发数，**而且创建失败的成员也计入**。所以「用完就扔、下次再 spawn」这种写法，必然撞上限且**没有任何补救手段**（上限不会被 inactive 释放）。
 
 #### 一个推演：不复用会怎么死
 
 ```text
-会话开始，maxMembers = **8**（本机 profile 层覆盖值；官方文档默认 16 —— 以实际报错 `Team member limit N reached` 为准；累计创建数，非并发数）
+会话开始，maxMembers = **16**（1.1.2 起本机 profile 层覆盖值 = 官方默认 16；1.1.1 及更早实测 8 —— 以实际报错 `Team member limit N reached` 为准；累计创建数，非并发数）
 
 spawn_teammate(recon)    # 1
 spawn_teammate(impl)     # 2
@@ -307,7 +307,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 **路 A（省事）**：装现成的 `dsh-agent-team-auto-orchestrator`（本文描述的插件），它已包含注入 + 硬门 + 状态路由。
 
 **路 B（自建，约 200 行）**：在你自己的宿主插件里实现三件事：
-1. 注册一条 `systemPrompt` 段（内容抄 §3.1 的七条）
+1. 注册一条 `systemPrompt` 段（内容抄 §3.1 的 11 节）
 2. 监听工具分发前置事件，实现 §3.2 的判定（三个细节一个都不能少）
 3. 注册一个只读状态路由（便于排查：当前配置 / 最近 10 次拦截记录）
 
@@ -330,7 +330,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
     - id: team-orchestrator
       name: dsh-agent-team-auto-orchestrator
       config:
-        injectLaw: true          # 是否注入七条规则
+        injectLaw: true          # 是否注入 11 节方法论
         enforceTeamGate: true    # 是否启用工具层硬门
         gateMaxStrikes: 4        # 同一 turn 最多拦几次（推荐 4）
         gateDomains: [fluent, plugin, dsh, preset]   # 哪些域触发全量拦截
@@ -366,7 +366,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 - **域关键词** → 只留通用词（多文件 / 多插件 / 多工况 / 多章节 / 多数据源 / 多个独立验证角度），把本机专属词（你所在行业 / 项目的专有名词）删掉或注释掉
 - **profile 名** → 参数化，默认 `"desktop"`，允许配置覆盖
 
-> ⚠️ 还有一件容易被忽略的：**验收脚本不一定在发布包里**。写文档时如果引用了测试脚本（如 `probe.mjs`），请确认它真的随包发布，否则别人"读完能懂、跑不起来"。
+> ⚠️ 还有一件容易被忽略的：**验收脚本不一定在发布包里**。写文档时如果引用了测试脚本（如 `test/gate-maxparallel.test.mjs`），请确认它真的随包发布（该文件现在已随仓库提供，但**只进 git、不进 npm 包** —— `package.json` 的 `files` 白名单不含 `test/`），否则别人"读完能懂、跑不起来"。
 
 ### Step 7 · 本机配置层（不随包发布）
 
@@ -445,7 +445,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 | `write_scopes` 传绝对路径，任务建不成 | 只接受**工作区相对路径** | 用相对路径，或留空 + 路径写进 `description` |
 | 派「当前会话自己的预设」报 `INVALID_ARGS` | 枚举**排除自身** | 降级 `spawn_teammate` 并写明原因 |
 | 状态页看不到团队挂载状态 | profile 名写死 | 参数化 profile 名 |
-| 会话跑到后面 `spawn_teammate` 报成员上限 | `maxMembers` 是**累计创建数**（含创建失败的），inactive 成员**不释放名额**；**本机实测 8**（官方默认 16，以实际报错为准） | 建前先 `list_agents`，有职责匹配的 inactive 成员就 `send_message` 复用；一次性活用 `subagent`（见 §5.4） |
+| 会话跑到后面 `spawn_teammate` 报成员上限 | `maxMembers` 是**累计创建数**（含创建失败的），inactive 成员**不释放名额**；**官方默认 16，本机 1.1.2 起也设 16**（1.1.1 及更早实测 8；以实际报错为准） | 建前先 `list_agents`，有职责匹配的 inactive 成员就 `send_message` 复用；一次性活用 `subagent`（见 §5.4） |
 | 想让某个 subagent 接新任务，`send_message` 或 `reassign` 报 `TEAM_MEMBER_NOT_FOUND` | subagent **不在花名册**、不是持久成员 | subagent 是一次性的，要复用就改用 `spawn_teammate` 创建持久成员 |
 
 > 一句总教训：**豁免名单防的是「工具有但被拦」，防不了「工具压根不存在」。**
@@ -467,7 +467,7 @@ dsh plugin --profile <你的 profile> add @deepseek-ai/dsh-experimental-agent-te
 
 | 项 | 数值 |
 |---|---|
-| 注入成本 | 约 **1600~1700 字符 / 轮**（每轮、每个会话都发，是永久 token 成本） |
+| 注入成本 | 约 **3363 字符 / 轮**（模板本体 3204；替换本机 8 条预设路由与 `@@MAXPAR@@` 并行上限占位后 3361（上限 6）~3363（上限 10），本机配 `gateMaxParallel: 10` 故实际 3363；每轮、每个会话都发，是永久 token 成本） |
 | 误伤成本 | 单步任务被拦 1 次（多数模型第一次被拦就改派）；最坏 4 次 |
 | 运行成本 | 零写入、零 spawn、零联网、零遥测；只有一条**本机回环**状态路由 |
 

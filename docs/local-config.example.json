@@ -1,5 +1,5 @@
 {
-  "_comment": "team-orchestrator 本机专属配置示例。复制到 <DSH_HOME>/team-orchestrator.local.json 后改成自己的值；本文件不在插件包内，npm pack 与 git push 都带不走它。",
+  "_comment": "team-orchestrator 本机专属配置示例 —— 请复制为 <DSH_HOME>/team-orchestrator.local.json 后改成自己的值使用；插件包内置此示例，实际生效的是本机那份 local.json，本示例本身不会被插件读取。",
   "presetRoutes": {
     "插件开发": "my-plugin-agent",
     "数据处理": "my-data-agent",

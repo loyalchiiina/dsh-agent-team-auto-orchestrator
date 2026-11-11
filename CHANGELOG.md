@@ -1,5 +1,279 @@
 # CHANGELOG
 
+## 1.3.0 — 2026-11-11（首次发布，含 1.2.0 未发布期全部改动）
+
+- 版本号 1.2.0 → 1.3.0：1.2.0 从未发布到 npm（npm 上最新仍是 1.0.1），本版把「未发布期」全部改动一次性发出。
+- 注入正文改为方法论版 11 节，并叠加 v2 的 10 条修订：小任务开新代理必亏 / gent_preset 白名单降级句 / N 个独立活同一步分给 N 个空闲成员 / 不重复派同一个活 / 任务板仅在可能跨重启时建 / wait_agent 只能派完再用 / 真·小任务免派与「不写 todo 按基础门槛算」兜底。
+- 移除设置页面板：删 lib\client.js，package.json 去掉 dsh.client 与 xports["./client"] —— 不再有客户端 bundle，改完只需重启宿主。
+- EXEMPT_TOOLS 补 ead / glob / grep（compress 一族此前已豁免），纯只读工具不再被团队硬门拦截。
+- 插件自带 cordis.patch.yml 的 gateMaxParallel 由 10 降为 6（母包仍 10，本机实际注入不受影响）。
+- 新增 GET /status 的 dbg 诊断字段（纯只读，用于定位闸门判定现场）。
+- 新增 	est\ 三个测试文件（合计 51 用例）与 scripts\scan-private.mjs（prepublishOnly 脱敏闸门）。
+
+## 1.2.0 未发布期修订 — 2026-11-10（版本号仍 1.2.0，未 bump）
+
+### 变更：注入正文换成方法论版（按优先级重排为 11 节），取消双模式
+
+- 注入段由 14 节 worker-pool 版**整块替换**为方法论版，并按优先级兜底重排为 11 节（先判该不该交 → 再判交给谁 → 再拆几路 → 再派给空闲者）（逐字节标题：〇 先判，再动手 / 一 要不要交出去：两条判据 / 二 交给谁：看「能不能反悔」/ 三 能拆就拆 / 四 拆了就同时发 / 五 先派给有空的人 / 六 我只做四件事 / 七 名字要能点名 / 八 跨会话要能接上 / 九 任务板：派了活就要留痕 / 十 预设路由 / 十一 工具层有一道硬门（执行保障，不改变上面的方法））。
+- 中途曾做过 classic/pool 双模式（`ACTIVE_ORCH_MODE` + `applyMode()` + `POST /tier` 的 `mode` 分支 + `METHOD_LAW_TEMPLATE`），**已全部拆除**：现只有一套正文、一个常量 `LAW_TEXT_TEMPLATE`，`buildLawText` 恢复为 `var out = LAW_TEXT_TEMPLATE;` 单行取值。
+- 正文不再出现任何 token 数字（`28,300` / `6,012` / `<2000` / `≤15 次`），经济判断改由「一、要不要交出去：两条判据」承载；实测数字只保留在本文档与 README。
+
+### 移除：设置页面板（`lib/client.js` 整个删除）
+
+- 删 `lib/client.js`（原 46,057 字节 / 875 行）；`package.json` 同步删 `exports["./client"]`（现 exports 3 键：`.` / `./package.json` / `./locale/*.json`）与整个 `dsh.client`（现 `dsh` 只剩 `bundle`）——插件不再有客户端 bundle，**改完只需重启宿主**，不再需要 Ctrl+Shift+R。
+- 面板上的三档滑块、自定义表格、性能基准按钮全部随文件消失；**后端能力一条没删**：`GET /status`、`GET /tiers`、`POST /tier`、`POST /bench/micro`、`POST /bench/parallel` 五条路由与 disposer `paths` 原样保留，改档/跑基准仍需时可直接打回环 HTTP。
+- `package.json` 的 `description` 重写：去掉「设置页提供三档中控台…不用退出 DSH」，改为「三档通过本机回环 HTTP 路由切换」；「团队编排铁律」改为「智能体团队编排方法论（11 节）」；「封顶路数」改为「路数可配 2~16」。
+
+### 追加：成员池自检与补建（用户选 B：另建员工1号~5号）
+
+- 背景：池子里已有 7 个老分析员（`patch-planner`、`scan-fixer` 这类，名字改不了），「池里有几个人」不能当判据 —— 判定依据落到**技术名前缀** `employee-N` 上。
+- 第五节改写：各对话共享同一个成员池，开工前先 `list_agents` 认自己的牛马 —— 有 `employee-N` 且空闲就直接派、别重复建；**一个都没有或不足五个、且没到名额上限就补齐**（技术名 `employee-1` … `employee-5`，spawn 只收小写连字符，对外称「员工1号」…「员工5号」）；**够五个就一个都别建**。
+- 第七节首行补技术名映射：`员工N号` ↔ `employee-N`，说明 spawn 只收小写连字符。
+- ⚠️ 上一条里的「不足五个就补齐 / 够五个就一个都别建」是**当时的固定个数判据**，已在同版本后续 **A 条**中**废除**（改为「任何空闲成员一律复用、空闲不够才新建、补到正好够用」），以 A 条为准。
+- 模板 1838 → **2049 UTF-16 字符**（48 → 51 行）；运行时 1987 → **2198**（`gateMaxParallel: 6` 时 2196）。占位符计数不变（`@@ROUTES@@`×1 / `@@MAXPAR@@`×2 / `@@MINDISP@@`×1）。⚠️ 该组数字是 **A~F 修订前**的中间值，当前值见下方「口径」。
+
+### 清理：经济阈值占位符与配置键（死配置）
+
+- 新正文不再使用 `@@ECON_LOW@@` / `@@ECON_LOW_C@@` / `@@ECON_LOW_CALLS@@` / `@@ECON_HIGH@@`，`buildLawText` 里对应 4 行 split/join 一并删除。
+- 随之删除 30 行已成死配置的键：`TIER_PRESETS` 三档的 `econLowTok` / `econLowCalls` / `econHighTok`、`_CONFIG_BASELINE` 与 custom 基线的同名字段、`CUSTOM_INT_FIELDS` 三条、`buildActiveTier` 的 preset/custom 映射、`/tiers` 的 presets 输出、`/status` 的 `tiers.values`。三档的硬门参数（`gateMinDispatches` / `gateMaxParallel` / `gateMaxStrikes` / `waitAgentGate` / `enforceTeamGate`）**未动**。
+
+### 修复：成员复用 + 并行计数 + 任务板留痕（A~F 六条，按用户实测漏洞）
+
+- **A 第五节重写（先派给有空的人）**：删掉「五个」固定个数判据 —— ① 任何空闲成员（`inactive`，不分「员工N号」还是早先建的专职成员）一律 `send_message` 复用；② 空闲不够同时开工才新建，补到正好够用、不凑固定个数，编号只增不减；③ 全员在忙且确实没人空闲才改开 `subagent`。实测背景：同一对话 3 轮内 `spawn_teammate` 17 次、其中 9 次明明有 13~15 个成员空闲（`list_agents` 早 4 分钟已显示空闲 13，随后仍连建 `employee-10`~`employee-14`）；另有一次 `spawn` 报 `Team member limit 16 reached` 时仍有 13 人空闲。
+- **C 新建前必须同一步重扫**：每次 `spawn_teammate` 之前，必须在**同一个 step** 里重新 `list_agents`，禁止拿上一步或更早的旧结果当依据。
+- **D 名额满只挡新建**：`Team member limit N reached` 只影响「新建」，唤醒现有 inactive 成员永远可用；绝不许因为「满了」就改用 `subagent`。
+- **E `subagent` 的独占场景**：只有「这个活必须在某个专用预设下执行」才用 `subagent`（常驻成员只能继承父对话预设、不能单独指定预设）；预设 id 走第十节 `@@ROUTES@@` 占位，不硬编码。三选一顺序：需预设 → `subagent(agent_preset=X)`；不需预设且有人空闲 → `send_message`；不需预设且确实无人空闲 → 新建；名额也满 → 才考虑 `subagent`。与 D 不矛盾。
+- **F 第九节任务板从「可选」改「跟派活数量硬挂钩」**：本轮派出 **≥2 路**（或新建了成员）→ **必须建板**，每活一条，写清「负责范围 / 产物完整绝对路径 / 验收标准」，派完立刻 `claim`、做完标 `complete`；只有 1 路、纯问答、或单步任务才不建板；汇报按「任务 → 谁 → 状态（待办 / 进行中 / 已完成）」三档；**建板不能代替派活**。背景：`session-adb6afb4` 全程 1,189 行事件里 `spawn_teammate` 17 次、`send_message` 30 次、`subagent` 13 次，而 `team_task_create/update/list/get` **全部 0 次** —— 旧文案「串着做两三件的不用建板」被当成整场豁免。（v2 已进一步降级为「要跨重启接着做才建板」，见下节。）
+- **B 硬门计数改成按 step 分窗**：`dispatchedCount` 原来整轮累计，于是「派 1 路 → 被拦 → 再补 2 路」也能过关。现改为 `step/start`（或 `tool/call.data.step` 变化）即归零，只看**当前 step** 的派活数；四档判定逻辑逐字未改，只改计数窗口。两个信号都没有（离线/极简事件流）时退化为整轮累加，兼容旧行为。拒绝文案同步点名「**同一步内**一次派满，分步凑数不算」。
+### 修复：上下文管理工具豁免 + 多条独立活同时派（G1 / G2）
+
+- **G1（真 bug）`EXEMPT_TOOLS` 漏了上下文管理工具**：实测 `session-adb6afb4` 在 `00:12:32` 报 `Error: 【团队硬启动闸门 ·「插件开发 / DSH 排查/配置 / 自定义预设」域】检测到「compress」调用，但本轮还没有开团队。` —— `compress` / `decompress` / `search_context` / `acp_status` 是**纯上下文管理**（只读写上下文，不写盘、不跑命令、不联网、无任何副作用），永远不该被这道门拦。已在 `EXEMPT_TOOLS` 补 4 项，并加注释「上下文管理类工具无副作用（只读写上下文、不写盘、不跑命令、不联网），永不拦」。
+- **G2（注入词）缺一句「多条独立活必须同时派给多个成员」**：实测 `session-0c69d8cb` 只有 **7 个成员**却发生 **137 次 `send_message`**，其中 `dock-player-impl` 一个人独占 **75 次**、`qq-integration-impl` 17 次、`songwriter-runner` 12 次；整个 **165 轮**里「同一步 ≥2 路」的并行批次只有 **8 次**，`team_task_create` 仍为 **0**。根因是把活排成队、一个接一个地喂给同一个成员（用户原话：「已经有队员的情况下一个队员不增加，一直和一个对话对话」）。已在**第五节末尾**追加 ④：「手里同时有 N 个互不依赖的活 → **就把 N 个活同时分给 N 个不同的空闲成员**（同一个 step 内一次发完）；禁止把活排成队、一个接一个地喂给同一个成员 —— 那样即使有 10 个人也只有一个在干。」
+### 追加（同版本规则修订 v2）
+
+注入词 9 处文案改动 + `EXEMPT_TOOLS` 三项只读工具 + 本插件 `cordis.patch.yml` 默认并行上限 10→6（**母包仍为 10，本机实注不受影响**）。逐条：
+
+1. **第一节末尾新增**：新开一个代理的固定开销与任务大小无关（每开一个新的都要重新付一遍完整上下文）—— 小任务开新代理必亏：能自己做就自己做，能盘活空闲队员就盘活（前缀只付一次、之后反复接活）。
+2. **第二节「常驻成员不给身份…」之前新增**：`agent_preset` 能不能用，取决于本机预设有没有配白名单：若报「selection is disabled」或「must be one of」，说明本机没开预设选择 —— 直接用当前预设 / 盘活队员把活干完，不要反复试。
+3. **第五节 ④ 上移**：从节末移到 ③ 之后（文字一字未改），让「先判忙闲 → 再一次性分发」的顺序连续。
+4. **第五节压掉半句重复**：「只有「必须换预设」才走 subagent（见第二节）：它不是团队成员用完后的替补 —— 名额满只挡住新建，不挡唤醒。」→「只有「必须换预设」才走 subagent（见第二节）。」（名额与唤醒语义已由 ③ 与本节前文覆盖）。
+5. **第五节新增去重提醒**：派活前除了查「谁空闲」，还要对一眼上一步派过什么 —— 同一个活不要重复派两遍。
+6. **第九节任务板降级**：建板条件收紧为「≥2 路**且**可能要跨重启接着做（或新建了成员要长期跟踪）」；只是这一轮并行跑完就结束的 → **不建板**，别为了走流程建一堆空条目。
+7. **第十一节第 2 句改为显式免派清单**：动手类操作之前必须先派活；读文件 `read` / 查路径 `glob` / 搜内容 `grep` / 要答案的提问 `ask_user_question` / 加载技能 `skill` / 团队工具 `send_message`·`list_agents`·`team_task_*` / 上下文管理 `compress` 等不受此限（直接做）。
+8. **第十一节新增 `wait_agent` 约束**：`wait_agent` 只能在已经派出去之后用 —— 不许先 wait 再派，也不许派 1 路就 wait。
+9. **第十一节末尾新增小任务豁免与兜底**：真·小任务（todo 只有 1~2 条、且都不含【并行】）同样免派；反过来 —— 不写 todo 就等于按基础门槛 `@@MINDISP@@` 路算，别指望不列清单就蒙过去。
+10. **`EXEMPT_TOOLS` 补三个纯只读工具**：`read` / `glob` / `grep`（读文件、列文件、搜内容，不写盘不跑命令 —— 拦它们只会白烧轮次）。
+11. **本插件 `cordis.patch.yml` 默认 `gateMaxParallel` 10 → 6**：只改插件自带那份，作为独立 bundle 安装时的默认值；**母包 `dsh-loyalchiiina-suite\cordis.patch.yml` 仍为 10，本机实注（10 路）不受影响**。
+
+> 说明：注入文本 `@@MINDISP@@` 因第 9 条新增一处引用，出现次数由 1 变 2（仍是同一种占位符，`buildLawText` 的 split/join 全局替换逻辑不变）。
+
+### 口径（实测，非推算）
+
+- 模板本体：**3153 UTF-16 字符 / 3153 码点 / 7606 UTF-8 字节 / 59 行**；占位符 `@@ROUTES@@`×1、`@@MAXPAR@@`×2、`@@MINDISP@@`×2（3 种 / 5 处），**无其它 `@@`**。
+- 运行时注入长度（本机 8 条预设路由）：**3292**（`gateMaxParallel: 10`）/ **3290**（`: 6`）；推导：`3153 − 10 + 185 + 2×(2−10) + 2×(1−11) = 3292`。
+- 硬门四档判定代码（`requiredDispatches` 计算链、主放行行、`buildDenyReason` 调用）**逐字未改**。
+
+### 测试
+
+- `node --check` 通过；`gate-maxparallel` 16/16、`gate-b` **28/28**（原 21 + 本轮新增 7 例：22 同一步 2 路放行 / 23 上一步派 1 路、本步动手 → 计数归零 → 拒 / 24 分步凑数 1+1 仍拒 / 25 同一步内补满 3 路放行 / 26 无 `step/start` 靠 `data.step` 分窗 / 27 step 边界不清空 todo 契约 / 28 无 step 信号 → 整轮累加兼容）、`singlestep-first` 7/7（合计 **51/51**）；既有 21 条断言零改动（它们的事件不带 step，走整轮累加兜底）。
+- 仅两处**字面量期望**随正文改动同步（逻辑未削弱）：① `gate-maxparallel` 用例 07 把「封顶 N」改为「当前上限 N 路」，期望数组 `[1,1,1,0,2,0,-1]` → `[2,2,2,0,2,0,-1]`（新文案在第三、第十二节各出现一次）；② `gate-b` 用例 17 的 `law.includes("十一、并行声明即契约")` → `law.includes("十、预设路由")`（重排后预设路由为第十节）。
+
+
+## 1.2.0 — 2026-11-09
+
+### 新增：三档中控台（lean / balanced / turbo）
+
+- **设置页一键切档**：`lean`（省 Token）/ `balanced`（中规中矩）/ `turbo`（超级高效）三档，档位写入 `<DSH_HOME>/team-orchestrator.local.json` 的 `tier` 字段，**点按钮即生效、不需要重启** —— 闸门参数（`gateMinDispatches` / `gateMaxParallel` / `gateMaxStrikes` / `waitAgentGate` / `enforceTeamGate`）立刻改变，注入文本在下一轮重建时取到新值。
+- **切档不覆盖用户配置**：只新增/覆盖 `tier` 一个键，`presetRoutes` / `domainKeywords` / `profileName` 原样保留；写盘走「临时文件 + rename」原子替换，写失败不改动原文件。
+- **未切档时即 custom 态**：`tier` 缺失或非法 → 完全按 `cordis.patch.yml` 的 config 走，行为与 1.1.x 等价（`tiers.active = "custom"`、`tiers.source = "config"`）。
+
+### 新增路由
+
+- `GET /dsh-team-orchestrator/tiers` —— 三档中控台的全量数据源：当前档、三档参数、宿主限额、并发预算、最近拦截记录。
+- `POST /dsh-team-orchestrator/tier` —— 切档（body `{"tier":"lean|balanced|turbo"}`），非法值返回 400 并回带可用档名。
+- 三个路由（含原有 `/status`）共用同一个 `ctx.effect` 与一次性 disposer，卸载插件时全部注销。
+
+### 注入文本改为函数形式（每轮重取）
+
+- `ctx.systemPrompt.section({ text })` 由**常量字符串**改为**函数**（`text: function () { return ACTIVE_LAW_TEXT; }`）：切档后下一次取段即拿到新文本，无需重启、无需重载插件。
+- 注入文本内所有数字改从生效值快照取，模板保留 4 个占位符：`@@MINDISP@@`（本档至少派几路）、`@@ECON_LOW_CALLS@@`（经济阈值·工具调用上限）、`@@ECON_LOW_C@@`（千分位带逗号形态）、`@@ECON_HIGH@@`（高 token 阈值）。三档经济阈值分别为 800 / 6 / 6000、2000 / 15 / 10000、4000 / 25 / 20000。
+
+### 修复：闸门注册不再受 `enforceTeamGate` 控制
+
+- 1.1.2 的问题：`enforceTeamGate: false` 时**整块监听器都不注册**，而注入文本仍写着「硬门会拦」—— prompt 与实际行为不一致；且切档把开关从 `true` 改成 `false` 之后，改回来也不会重新注册。
+- 1.2.0：监听器**无条件注册**，开关判断挪进监听器内部（`if (ACTIVE_TIER && ACTIVE_TIER.enforceTeamGate === false) return next();`）。于是切档可以**立即**开关闸门，「关掉再打开」也不再需要重启。
+
+### `/status` 扩容
+
+- 新增 `tiers` 段：`active` / `source` / `values`（六项生效值）/ `available` / `lastGateDecision` / `noTodoFallbackHits`。
+- 新增 `budget` 段：并发预算（在跑的 subagent 数、上限、按档位建议的路数）。
+- 新增宿主限额：`maxMembers` / `maxActiveSubagents` / `maxDepth`（**只读展示**，插件不写宿主配置）。
+
+### 并行标记白名单（沿用 1.1.3）
+
+- 1.1.3 已把并行契约判定从裸子串 `indexOf("并行")` 改为显式标记白名单（【并行】/【并行×N】等 5 种形态），本版不改该逻辑，只把它的两个经济阈值数字接入三档体系。
+
+### 文档/口径
+
+- 注入文本长度随档位变化（模板本体 + `gateMaxParallel` 的位数差异）：`/status` 的 `section.textLength` 必须等于同档 `buildLawText()` 的返回值，且全文不得残留 `@@`。
+- 本版新增 `lib/client.js`（客户端档位面板）；`dsh.client` 只声明 `platform: "web"`，配合 `exports["./client"]` 指向 `./lib/client.js` —— 与生态内其余客户端插件形态一致（不写 `entry` 键）。
+
+### 追加（同版本文档/规则修订 · 注入铁律二次修订）
+
+- **新增〇节「动手前先预分类」**（插在首段之后、第一节之前）：收到任务先按**可逆性**分两组（不可逆·无需对话·做完就安心 → 可 subagent 或自己做、可安心并行；可能需维护/交流/返工 → 留主线或 teammate、能中途刹车），分完再写 todo（第一类挂「可并行」、第二类归「需对接」）；大任务先判可否拆独立子任务（独立互不沟通 → 并行 subagent 批量；需互相沟通/对接 → 派多个 teammate），并给名额取舍（任务量小一次一个 → 用 teammate；一下量很大 → 优先不占名额的 subagent，别堆满 teammate 名额）；再补「与 dsh-todo-float-ball 调和」：预分类在心中完成、不占工具调用，每轮第一动作仍是 `todo_write`，第一次写出的就是按可逆性分好类的清单；且该调和在**无 dsh-todo-float-ball** 的环境同样成立，由本插件的注入纪律兜底。
+- **三 派活通道**开头新增「通道二轴判定」：**先判会不会要改口、再判要不要并行**，两条轴独立。可并行轴决定派几路（互相独立 + 结果能合并 → 声明 N 路一次派满，见第二节）；可变向轴决定走哪个通道（频繁交互 / 信息易变 / 可能中途刹车/变向/返工 → 必须 `spawn_teammate` 常驻成员、能 send_message 引导 / interrupt 停下，**绝不 subagent**；只读查询 / 结果稳定 / 做完就返回 → `subagent` 不占名额最合适；独立但易变 → 并行的是多个团队成员而非多个 subagent）。一句话：**力度看并行，通道看可逆性**。
+- **新增第十二节「派活命名约束」**：每次派活 / 开 subagent / 建成员，名称带**序号前缀**（`01_`、`02_`…按本 turn 派出顺序）+ 名称/描述里**明确类型**（常驻成员 `teammate`、一次性子代理 `subagent`），如 `03_fluent-solver_teammate`；spawn_teammate 只接受 lower-kebab-case 时把下划线换连字符、序号与类型后缀都保留；汇报必须用带序号的名字点名。
+- **注入长度（最新）**：经「终极收口」补 A1/A2 两条后，模板本体 **88 行 / 6469 字符**；运行时（本机 8 条预设路由 + `gateMaxParallel: 10`）`section.textLength` **6562**；`gateMaxParallel: 6` 时 **6560**。占位符仍 9 处、全文无 `@@` 残留。
+- **worker-pool 协作纪律（范式反转，注入第四轮）**：第八节「每轮先看花名册」重写为「**worker-pool：主力是可通信 teammate，subagent 只做溢出**」——成员**不给狭窄人格 / 锁领域**、一律**通用干活身份**（名字只作区分，后经第五轮统一为 `01号员工` 格式）谁空闲谁接；**实时队列**：有任务即时扫空闲成员派发、干一个发一个、不等活；**自适应扩容**：第一轮抢不过来 → 未达 maxMembers 上限就新增 teammate 扩池，**快满员且都忙**才退化 subagent（一次性/重跑便宜/只读）；**重启可续**（teammate 可 send_message 唤醒继续）；**守恒**：maxMembers 累计不回收、规划角色别无限扩，满了只能 subagent。正文新增第十三节「**跨会话协作**」（续接 A / 进度文件 B / 成员池 C / 重启时机 D / 任务板判据 E，C 按通用身份+自适应扩容写）。段落数 75→86、模板本体 5052→6012（+960 UTF-16）、运行时 textLength 5145/5143→**6105/6103**。
+- **员工命名（注入第五轮）**：第八节与第十二节把**主力池常驻成员**命名统一为 `01号员工` / `02号员工` / `03号员工`…（序号 + 「号员工」，只作区分、不锁领域）；一次性子代理保持**序号 + 类型**格式（`05_doc-query_subagent`），两边严格区分、不混；spawn_teammate 技术名限 lower-kebab-case 时另给 `01-employee` 并在描述/进度文件映射「01号员工」。模板 6012→6078（+66）、textLength 6105/6103→**6171/6169**。
+- **单步豁免表述收紧（发版前）**：第七节 L388 原文「才允许只派 1 路（…硬门按 2 路要求）」→ 实际实现是**单步标记 → `required 0` 免派**，且代码不侦测「实际拆多块」按 2 路拦，属未实现承诺。改为准确稿：「单步任务：todo_write 第一条里显式写 `【不可拆·单步】` 即免派 0 路（不要再派代理，也不要闷头拆多块）；没写该标记的单步任务仍按当轮要求路数派活。」
+- **措辞统一**：〇节「与 todo 悬浮球调和」改为「与 dsh-todo-float-ball 调和」，正文内「悬浮球」字样全部替换为插件名 `dsh-todo-float-ball`，并在调和句末尾追加无插件环境兜底句（本规则在无该插件的环境同样成立，每轮仍先 `todo_write`、带进度，由本插件注入纪律兜底，不依赖任何显示插件）。上述长度已含该兜底句（再 +113 UTF-16）。
+- 不 bump 版本：仍 `1.2.0`，属同版本文档/规则修正（无新代码逻辑改动，`countParallelTodos` / `hasSingleStepMark` / 硬门判定块逐字未动）。
+
+### 已知限制
+
+- `maxMembers` / `maxDepth` **只能显示不能改**：它们属于宿主 agent-team 配置（profile patch），插件改写会被设置页反向覆盖，故按只读处理。
+- 切档后**上游 prompt cache 会失效一次**（注入段文本变化 → 缓存前缀不再命中），下一轮自动恢复。
+- 客户端面板不做轮询，切档结果以面板回读的 `tiers.active` 为准。
+
+### 测试
+
+- 既有 44 个行为用例（判定段守门人）在改动后**断言零调整**全部通过；另做 20 项改动命中校验（A1–A20 全过）。
+
+### 版本号
+
+`package.json` `version` `1.1.3` → `1.2.0`。
+
+## 1.1.3 — 2026-11-09
+
+### 修复：并行标记裸子串误判（用户拍板「先修误判再发」）
+
+- **根因**：`countParallelTodos` 唯一判定行是 `content.indexOf("并行") >= 0` —— 裸子串包含即算并行契约。中文没有词边界，任何含「并行」二字的叙述都被计入，导致 2 条真并行被算成 3 条，硬门多要求 1 路。
+- **误判样例（旧规则实测 count=1，应为 0）**：
+  - 「并行门真机行为测试（硬门不可绕过、并行预算核对）」
+  - 「汇报结论：本任务不可并行，串行即可」（否定句）
+  - 「修复【不可拆·单步】与并行门的优先级冲突」
+  - 「调整并行预算 gateMaxParallel 默认值 6→8」
+- **漏判方向**（同一规则的反面）：`同时派 3 路` / `并发执行 4 个` / `fan out 3 subagents in parallel` / `一次派满 6 路` 全部计 0 —— 讽刺的是注入第二节自己教的措辞「一次派满 N 路」，实现侧一个字都认不出。
+- **修法**：改为固定标记白名单 + 路数加权。只认 5 种显式标记 `【并行】` / `[并行]` / `「并行」` / `（并行）` / `(并行)`；前两种支持声明路数 `【并行×3】` / `【并行3路】`，按声明路数计入（`count = 各条声明路数之和`），无路数默认 1。新增常量 `PARALLEL_MARK_RE`，`countParallelTodos` 整段重写（只此一段 + 两个测试 helper 改动，闸门主流程与上限逻辑零改动）。
+- **教读对齐（同批）**：注入文本第十一节正文改写为「要并行的条目必须用显式标记…正文里的「并行门 / 并行预算 / 不可并行 / 并行契约」等描述性文字不算并行契约」（标记形态此前全仓库 0 处定义，与单步豁免用的 `【不可拆·单步】` 风格统一）；拒绝文案「标了 N 条「并行」」→「声明了 N 路并行（【并行】/【并行×N】标记合计）」，保留 `【并行契约违约】` 前缀。
+- **测试夹具同步**：`test/gate-b.test.mjs` 与 `test/gate-maxparallel.test.mjs` 的 `parallel()` helper 由 `"块N 并行处理"` 改为 `"【并行】块N"`；`test/gate-b.test.mjs` 第 12 例的内联文本同改。旧夹具靠裸子串命中，新规则会漏，故必须同步（否则 19 个断言假红）。
+
+### 文档/口径
+
+- 注入文本模板本体 3,339 字符；运行时 `textLength` 随 `gateMaxParallel` 变化：上限 6 → 3,496，上限 16 → 3,500（按本机 8 条 presetRoutes 实测）。本机配 `gateMaxParallel: 10` → 期望 `/status` 的 `section.textLength = 3498`。
+
+### 测试
+
+- `node test/gate-b.test.mjs` 21/21、`node test/gate-maxparallel.test.mjs` 16/16、`node test/singlestep-first.test.mjs` 7/7（合计 44/44），断言零调整。
+
+### 版本号
+
+`package.json` `version` `1.1.2` → `1.1.3`。
+
+## 1.1.2 — 2026-11-09
+
+### 新增 / 变更
+
+- **并行契约路数上限可配（`gateMaxParallel`）**：默认 6，合法区间 2~16；非法值回落 6 并记一条 `config-fallback`。本机配置设为 10。此前上限是写死的 6。
+- **注入文本动态反映该值**：模板中改为 `@@MAXPAR@@` 占位符，运行时按 `gateMaxParallel` 替换；同时纠正旧文案「含你自己」→「不含 lead 自己 —— 只数 `subagent` / `subagent_fork` / `spawn_teammate` 调用次数」。
+- **团队成员上限 `maxMembers` 从 8 调高到 16**（= 官方 `DEFAULT_MAX_MEMBERS`），并在 profile patch 追加「按 id 覆盖」条目 —— asar 内的 `config` 是整体替换而非深合并，故四个键必须写全。
+- **`/status` 的 `parallelGate` 新增 `maxParallel` 字段**，用于核对运行时实际生效的上限。
+
+### 文档修正
+
+- 注入字符数口径统一：模板本体 3204 字符；运行时随 `gateMaxParallel` 为 3361（上限 6）~3363（上限 10），本机配 10 故实际注入 3363（按 `LAW_TEXT_TEMPLATE` + 本机 8 条路由实测，与 `/status` 的 `section.textLength` 同值）。
+- `docs` 口径对齐 1.1.2：两处「七条」→「11 节」（与注入原文一致）、并行上限改为 `Math.min(并行条数, gateMaxParallel)` 并写明「不含 lead 自己」、`maxMembers` 三处由「本机 8」更正为 16。
+- `README` 新增「前提与降级行为」节：四档判定的四层依赖、静默降级对照表、30 秒自查字段，以及与 `dsh-todo-float-ball`（只读镜像）的三类预期不一致与判断口径；同步 1.1.2 口径 —— 注入字符数 3204 / 3363、「并行路数上限」改为「可配 `gateMaxParallel`」、开关表与 `/status` 表补 `gateMaxParallel` / `maxParallel`、`maxMembers` 更正为 16。
+
+### 测试
+
+- 本版**未随包提供自动化测试文件**：`gateMaxParallel` 的默认值、边界 2 / 16、越界与非法值回落，靠 `/status` 的 `parallelGate.maxParallel` 与 `gateLog` 里的 `kind: "config-fallback"` 人工核对。
+
+### 版本号
+
+`package.json` `version` `1.1.1` → `1.1.2`。
+
+### 文档修正（发版后补）
+
+- 修正 `package.json` 描述里写死的「封顶 6」→ 改为「封顶路数可配 2~16」
+- 修正 `docs/local-config.md` 优先级说明：拆成「可被 `local.json` 覆盖的 3 个字段」与「只能从 patch config 读的 7 个键」，并明确写进 `local.json` 不生效
+- 补充 `README.md`：`gateMaxStrikes: 0` = 永不拦截（非常规取值）
+- 补充 `README.md`：两种安装方式（经聚合包挂载 / 直接安装）读取的 `cordis.patch.yml` 不是同一份
+- 测试文件现已随仓库提供：`test/gate-maxparallel.test.mjs`（16 用例）、`test/gate-b.test.mjs`（21 用例）、`test/singlestep-first.test.mjs`（7 用例）。三者**只进 git、不进 npm 包**（`files` 白名单不含 `test/`），故上面「本版未随包提供自动化测试文件」仍然成立；`npm test` 跑 `gate-maxparallel`。
+
+---
+
+## 1.1.1 — 2026-11-09
+
+### 改判（用户拍板选 B：并行门改为三档判定）
+
+用户两条诉求原文：
+- ① 该并行却串行（标了「并行」却只派 1 路）
+- ② 小任务也硬开子代理（查一行配置也开一个）
+
+1.1.0 的固定门槛（默认 2 路、单步标记才降到 1 路）只治 ① 的一半 —— 基础值仍是 1 路起步、连「查一行配置」都要先派活，② 没解决。本版改为按 todo 内容自适应：
+
+```js
+// 优先级从高到低：
+// 1) 单步标记命中           → required = 0（明确声明不拆，自己干）
+// 2) parallelTodos >= 2     → required = Math.min(parallelTodos, 6)
+// 3) todoCount 1~2 且 parallelTodos <= 1 → required = 0（真·小任务，不拦）
+// 4) todoCount === 0（从未写 todo）      → required = minDispatches（= 1，不许「不写就绕过」）
+// 5) 其余（todoCount >= 3 但没标并行）    → required = minDispatches（= 1）
+```
+
+含义：小任务放你自由；中等任务至少走一次团队流程；**标了并行就是契约，必须一次派满**。
+
+### 修复
+
+- **「不写 todo 就绕过硬门」的缺口（三档 → 四档）**：初版三档把「`todoTotal <= 2`」一律当小任务放行，而闸门输入完全来自模型自己写的 todo —— 只要不调 `todo_write`（或只写 ≤2 条），硬门就永久失效，① 号诉求（该并行却串行）等于换个口子重新打开。现收紧为 **`todoTotal >= 1 && todoTotal <= 2`** 才算小任务；`todoTotal === 0`（从未声明待办）回落基础门槛 `minDispatches`（默认 1 路），并标记 `lastGateKind = "no-todo-fallback"`、累计 `noTodoFallbackHits`。注入文本第十一条同步补一句「没写 todo ≠ 小任务：动手前必须先把本轮待办写进 todo_write」。
+- **`gateMinDispatches` 默认值 2 → 1**：基础门槛只是「走一次团队流程」；标了「并行」的 todo 会把它抬到并行条数（上限 6）。设 `0` 即全关。设 `2` 只对**中等及以上任务**（`todoTotal >= 3`）退回 1.1.0 的「必须两路」；真·小任务（`todoTotal <= 2`）与单步标注按优先级 1/3 仍然豁免，不受此旋钮影响。
+- **新增 `countParallelTodos(todoArgs)`**：统计 `todos[].content` 含「并行」的**未完成**条目数，`status === "completed"` 不计入；解析失败 / 无 `todos` / 非数组一律返回 `{ count: 0, total: 0 }`，绝不抛。
+- **`lastTodoArgs`**：闸门扫事件时缓存本轮最后一次 `todo_write` 的原始参数（`todo_write` 是豁免工具、不经过闸门判定，只能这样取样）；`turn/start` 时清 `null`，不沿用上一轮契约。
+- **拒绝文案分场景**：`required >= 2` 且派活不足时新增【并行契约违约】段，点名「todo 里标了 N 条「并行」，本 turn 只真派活 M 路」；`required === 0` 时不拦、不记 strike。步骤 ③ 同步改写为「真·小任务与单步任务都不要求派活」。
+
+### 注入文本
+
+- 新增第十一条「并行声明即契约（1.1.1）」：标了「并行」必须同一条消息内一次派满，标 3 路只派 1 路＝违约；没标「并行」的小改动（≤15 次工具调用或产出 <2,000 token）不要开子代理；同一功能模块的连续小修复用同一个常驻成员（新 subagent 每次重付约 28,300 token 固定前缀）。
+
+### 新增排查字段
+
+`/dsh-team-orchestrator/status` 的 `parallelGate` 增加 `lastRequired` / `lastParallelTodos` / `lastTodoTotal` / `lastGateKind` / `lastTodoArgsSeen`，各会话条目增加 `parallelTodos` / `todoTotal` / `kind`。
+
+### 版本号
+
+`package.json` `version` `1.0.1` → `1.1.1`（1.1.0 发布时因放行范围只含代码与 CHANGELOG，版本号未同步，本版一并补齐）。
+
+---
+
+## 1.1.0 — 2026-11-09
+
+### 修复（用户批准的 P0/P1 方案）
+
+- **D1 硬门布尔 → 计数**：旧布尔判定（派 1 路 = 派 3 路）改为 `dispatchedCount` + `requiredDispatches`；默认过门要求 2 路真派活，`gateMinDispatches` 可配（设 1 即退回旧行为）。
+- **D1 单步豁免**：`todo_write` 第一条写 `【不可拆·单步】` 才允许只派 1 路；未写标记按 2 路要求。闸门只读 `todos[0].content`——其余位置出现该标记一律不豁免（解析失败 / 无 `todos` / 空数组同样不豁免），防止「任意一条无关待办塞标记」绕过并行门。
+- **D3/D4/D5 注入文本**：删「spawn 要克制」→「克制的是新建成员数，不是并行路数」；「拆任务→派活→收结果→合并验收」→「拆任务→一次派满 N 路→统一收结果→合并验收」；`maxMembers` 实测 8 与官方默认 16 均标注来源，冲突以实际报错为准。
+- **D6 自报状态造假**：`orchestratorMounted` 由 `bundles.indexOf(...)`（恒 false）改为「apply 已执行 = 已挂载」，并新增 `orchestratorMountedVia` 给出证据链（`profile.bundles` / 具体 `cordis.patch.yml` 绝对路径 / `patch-insert(未定位)`）。
+- **D7 `wait_agent` 空转**：移出 `EXEMPT_TOOLS`，改由 `waitAgentGate` 判定；默认 `warn`（放行 + 记账），可切 `enforce`。
+- **P1-4 经济阈值**：注入文本新增第十节（每个新 subagent 固定前缀 ≈ 28,300 token，平均产出 6,012 token → 三类阈值）。
+
+### 新增配置
+
+`gateMinDispatches`（默认 `2`）、`waitAgentGate`（默认 `"warn"`）。
+
+### 新增排查字段
+
+`/dsh-team-orchestrator/status` 增加 `parallelGate`（生效阈值 + 各会话已派路数）；`gateLog` 每条增加 `dispatched` / `required` / `kind`（`gate-deny` 或 `wait-before-full-dispatch`）。
+
+### 更正
+
+- 0.2.0 段「`gateMaxStrikes`（默认 `1`）」与代码实际默认值 `4` 不一致，以代码为准：**默认 4**。
+- 本版 `package.json` 的 `version` 仍为 `1.0.1` —— 本次放行范围只含 `lib/index.js` 与 `CHANGELOG.md`，版本号需用户批准后单独同步为 `1.1.0`。
+  - 上述欠账已在 **1.1.1** 结清：`version` 直接同步为 `1.1.1`（不另出 `1.1.0` 号），代码与 CHANGELOG 的语义版本以 1.1.1 为准。
+
+---
+
 ## 1.0.1 — 2026-11-09
 
 ### 插件市场元数据：新增 locale 显示名与描述
@@ -337,8 +611,8 @@ v0.1.0 只有常驻提示（软约束，模型可以不理）。0.2.0 加硬门�
 ### 设计原则
 
 - **全部路径 try/catch → fail-open**：宁可闸门不生效，绝不因为闸门自身 bug 阻塞正常工作。
-- **不要求"必须 ≥2 路并行"**：只要求"先走团队流程"。不可拆的单步任务建一条任务记录即放行，不为并行而并行。
-- **不按调用序号判定**（`dsh-todo-float-ball` 踩过"计数卡死"事故）：只看"本轮有没有团队工具调用"，天然免疫 `run_code` 包装与并行批次乱序。
+- **要求「同一件活一次派满 N 路并行」**（1.1.0 起取代旧表述「不要求必须 ≥2 路并行、不为并行而并行」）：声明可拆 N 路就必须一次派满 N 路，禁止派一路等一路；不可拆的单步任务须先在 `todo_write` 第一条写 `【不可拆·单步】`，才允许只派 1 路。
+- **按「真派活路数」计数判定，不按调用序号**（`dsh-todo-float-ball` 踩过"计数卡死"事故）：每轮从事件流重算 `dispatchedCount`，只数 `subagent` / `subagent_fork` / `spawn_teammate` 三种，天然免疫 `run_code` 包装与并行批次乱序，也不累加历史残留。
 
 ---
 

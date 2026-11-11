@@ -57,18 +57,36 @@ export DSH_HOME=/path/to/your/dsh-home
 | 用途 | 仅用于状态路由诊断输出，不改变实际加载路径 |
 | 填错 | 非字符串（数字 / 布尔 / 对象）→ 回退 `"desktop"` 并记一条告警 |
 
-## 4. 优先级
+## 4. 优先级：只覆盖三个字段
+
+**只有 `presetRoutes` / `domainKeywords` / `profileName` 这三个字段**走第 4.1 节的取值链；`local.json` 只负责它们。硬门参数写进 `local.json` **一律不生效**，见第 4.2 节。
+
+### 4.1 可被 `local.json` 覆盖的 3 个字段
 
 从高到低，命中即停：
 
 | 顺序 | 来源 | 说明 |
 | --- | --- | --- |
-| 1 | 环境变量 | 最高优先，适合临时覆盖 |
-| 2 | `team-orchestrator.local.json` | 本机专属配置 |
+| 1 | 环境变量 `DSH_HOME` | **只用于定位主目录**（决定去哪里找 `local.json`），它本身不携带任何字段值 |
+| 2 | `team-orchestrator.local.json` | 本机专属配置，覆盖插件取值 |
 | 3 | 插件包内 `cordis.patch.yml` 的 `config` | 随包分发，可被本地文件覆盖 |
 | 4 | 代码默认（通用） | 兜底，永远可用 |
 
-一句话记：**环境变量 > local.json > patch config > 代码默认**。
+一句话记：**`DSH_HOME`（只定位）→ local.json → patch config → 代码默认**，且**只对上面这 3 个字段成立**。
+
+### 4.2 只能从 patch config 读的 7 个键（硬门参数）
+
+| 键 | 类型 | 默认 | 作用 |
+| --- | --- | --- | --- |
+| `injectLaw` | boolean | `true` | 是否注册常驻注入段 |
+| `enforceTeamGate` | boolean | `true` | 是否挂工具层硬门 |
+| `gateMinDispatches` | number ≥ 0 | `1` | 基础门槛要求派活数；`0` = 关掉基础门槛 |
+| `gateMaxParallel` | number 2~16 | `6` | 并行契约封顶路数 |
+| `gateMaxStrikes` | number ≥ 0 | `4` | 每会话每轮最多拦截次数；`0` = 永不拦截 |
+| `waitAgentGate` | `"warn"` / `"enforce"` | `"warn"` | `wait_agent` 放行还是拦 |
+| `gateDomains` | string[] | `["fluent","plugin","dsh","preset"]` | 参与硬门的域 |
+
+⚠️ 这 7 个键**只从 `cordis.patch.yml` 的 `config` 读**：**写进 `local.json` 不生效** —— 既不覆盖 patch config，也不被当成兜底默认值；环境变量同样不参与（`DSH_HOME` 只用于定位主目录）。想改硬门参数，改 patch config，然后**彻底退出 DSH 再启动**（宿主侧无热重载）。
 
 ## 5. 热重载
 

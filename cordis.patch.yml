@@ -7,7 +7,7 @@
 #   任何技能被加载（技能按需加载，prompt 段常驻）。
 #
 #   这是「双层机制」：
-#     · 软约束层 = 常驻注入 8 条规则（把团队编排从「用户点名才开」变成默认行为）
+#     · 软约束层 = 常驻注入 11 节方法论（把团队编排从「用户点名才开」变成默认行为）
 #     · 硬约束层 = 工具层硬门（v0.2.0 起）：入域后必须先**真派活**才放行动手类工具。
 #       开关见下面 enforceTeamGate；置 false 则退回纯软约束（只注入、不拦）。
 #
@@ -15,7 +15,12 @@
 #   预设路由表 / 业务域关键词 / profile 名 **不写在代码里**，改从
 #   `<DSH_HOME>/team-orchestrator.local.json` 读（Windows 通常是 %USERPROFILE%\.dsh\）。
 #   该文件在插件目录之外 → npm pack / git push 结构上打不进去。
-#   优先级：环境变量 > local.json > 本文件的 config > 代码默认（通用值）。
+#   优先级（1.1.2 起的口径，别再用旧的「环境变量 > local.json > config > 默认」）：
+#     **只有 `presetRoutes` / `domainKeywords` / `profileName` 三个字段走 local.json 覆盖**；
+#     硬门参数（7 个键：injectLaw / enforceTeamGate / gateMaxStrikes / gateMaxParallel /
+#     gateDomains / gateHeavyTools / gateTeamTools）**只从本文件的 config 读**，代码内置值当默认；
+#     把它们写进 local.json 不生效（代码根本不读那三个以外的键）。
+#     环境变量只有 `DSH_HOME` 用于定位 DSH 主目录（进而定位 local.json），不参与配置覆盖。
 #   热重载：改 local.json 后**下次工具调用即生效**（按 mtime 检测），无需重启；
 #           但它拼进的那段注入文本是**启动时求值**的 → 想让 presetRoutes 立刻反映
 #           到注入文本，仍需彻底退出 DSH 再启动。
@@ -33,7 +38,12 @@
 #                       ⚠️ v0.3.0 起 team_task_create **不再**算开团队（只留痕不派活会被拒）。
 #                       未入域时：只拦动手类（pwsh/bash/write/edit/mcp__ansys-fluent__*）。
 #   gateMaxStrikes   (默认 4)     同一 turn 最多拦几次。4 = 连拦 4 次才放行，逼模型真派活。
+#                       0 = 永不拦截（非常规取值：等于废掉「防死循环」这一层，剩下两层照旧）。
 #                       v0.3.0 从 2 提到 4：因为「只建任务板」不再过关，2 次不够逼出派活。
+#   gateMaxParallel  (默认 6)     并行契约封顶路数（1.1.2 新增）。
+#                       合法范围 2~16；未配置 = 6（与 1.1.1 完全一致，便于回退）；
+#                       非法值（<2 或 >16）→ 回落 6，并在 gateLog 记一条 config-fallback。
+#                       本机置 10（用户 2026-11-09「尽量高一些」；代码默认仍留 6 当回退锚点）。
 #   gateDomains      (默认四域)   哪些域触发「全量拦截」。
 #                       ⚠️ 想**关掉**硬门请用 enforceTeamGate: false；
 #                       不要用 gateDomains: [] —— 代码对空数组走判空回退默认四域，设空等于没关。
@@ -54,6 +64,7 @@
         injectLaw: true
         enforceTeamGate: true
         gateMaxStrikes: 4
+        gateMaxParallel: 6
         gateDomains:
           - fluent
           - plugin
