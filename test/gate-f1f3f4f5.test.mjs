@@ -75,14 +75,14 @@ r = runGate([todo(parallel(2)), stepStart(1), stepCall("send_message", 1), stepC
 t("06", "F3 同一步内混合通道（send_message + subagent）→ 2 路放行", [r.turnMax, r.required, r.pass], [2, 2, true]);
 
 // ── 第二部分：spawn 前置复用校验（F4 / F5）─────────────────────────────
-const stateBlock = sliceBetween("var lastRoster = { at: 0", "var SPAWN_ROSTER_TTL_MS = 120000;", "roster state");
+const stateBlock = sliceBetween("var lastRoster = { at: 0", "var SPAWN_ROSTER_TTL_MS = 600000;", "roster state");
 const helperBlock = sliceBetween("function parseRosterText(text) {", "function buildDenyReason(", "roster helpers");
 const f4Block = sliceBetween('if (toolName === "spawn_teammate" && spawnReuseGate !== "off") {', "if (isExempt(toolName)) return next();", "F4 block");
 
 const runSpawnGate = new Function(
   "toolName", "spawnReuseGate", "exec", "gateLog",
   stateBlock + "\n" + helperBlock + "\n" +
-  "  var SPAWN_ROSTER_TTL_MS = 120000;\n" +
+  "  var SPAWN_ROSTER_TTL_MS = 600000;\n" +
   "  var spawnReuseHits = 0;\n" +
   "  var spawnReuseWaitHits = 0;\n" +
   "  var __r = (function () {\n" + f4Block + "\n  })();\n" +
@@ -116,10 +116,10 @@ gl = [];
 res = runSpawnGate("spawn_teammate", "enforce", mkExec(rosterEvents([LEAD("running"), TEAMMATE("employee-1", "running"), TEAMMATE("employee-2", "running")])), gl);
 t("10", "F4 无空闲 + spawn → 放行", [res.result, res.reuse, res.wait], [null, 0, 0]);
 
-// 03 花名册过期（>120s）→ 拒，提示先查
+// 03 花名册过期（>600s）→ 拒，提示先查
 gl = [];
-res = runSpawnGate("spawn_teammate", "enforce", mkExec(rosterEvents([TEAMMATE("employee-1", "inactive")], { at: NOW - 200000 })), gl);
-t("11", "F4 花名册 >120s + spawn → 拒并提示先查", [DENY_OK(res, "必须先查花名册"), res.reuse, res.wait], [true, 0, 1]);
+res = runSpawnGate("spawn_teammate", "enforce", mkExec(rosterEvents([TEAMMATE("employee-1", "inactive")], { at: NOW - 700000 })), gl);
+t("11", "F4 花名册 >600s + spawn → 拒并提示先查", [DENY_OK(res, "必须先查花名册"), res.reuse, res.wait], [true, 0, 1]);
 
 // 04 完全没有花名册 → 拒（不许因为查不到就放行）
 res = runSpawnGate("spawn_teammate", "enforce", mkExec([]), []);

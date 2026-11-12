@@ -63,7 +63,7 @@ t("22", "TEAM_OPEN_TOOLS 不含 send_message", [!!open && open[1].indexOf("send_
 for (const k of ["dispatchHistogram", "selfWorkTurns", "serialSuspect", "subagentHintHits", "readonlyPwshHits", "badNameHits", "subagentBeforeRestartHits"]) {
   t("23." + k, "status 观测字段存在: " + k, [src.indexOf(k + ":") >= 0 || src.indexOf("var " + k) >= 0], [true]);
 }
-t("24", "subagent-reuse-hint 留痕分支存在", [src.indexOf('kind: "subagent-reuse-hint"') >= 0], [true]);
+t("24", "subagent-not-allowed 留痕/拦截分支存在", [src.indexOf('kind: "subagent-not-allowed"') >= 0], [true]);
 
 console.log(`\n结果：${n - fail} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

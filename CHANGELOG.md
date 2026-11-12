@@ -1,4 +1,141 @@
+## [1.5.10] - 2026-11-12
+
+### 复杂任务自动开团队（用户拍板的界限判据）
+
+- **注入词 §一 加「复杂度下限」**：≥3 个独立产出物（各写不同文件）且每个预计 ≥50 行 → 必须开团队；单件大活（>150 行）→ 主会话自己做（单件无并行收益）；预计 ≤4 轮工具 → 自己做。判不准宁可自己干，但不得把「多文件 + 多轮」的活全吞。
+- **新增 `parallel-missed` 门**：todo 里出现 ≥3 个不同产出文件（带扩展名）、且本 turn 单步 0 派活 → `spawnReuseGate === "enforce"` 时拦，文案给两条改道（`spawn_teammate` 建 ≥2 个成员同一步发满 / 标【并行×N】），小文件活可在 todo 第一条写【独立完成】豁免。
+- 无 `parallel-missed` 时行为不变（不标【并行】仍一律放行）。
+
+### 验证
+
+- `node --check` 0；`npm test` **126 通过 / 0 失败**；四副本 SHA256 `4EBD909D1E28B7DA…` 全一致。
+- 实测待做：重启后跑「5 个文件 + 0 派活」场景应被 `parallel-missed` 拦；单件 150 行/3 个小文件应放行。
+
 # CHANGELOG
+
+## 1.5.9 — 2026-11-12
+
+文案去重与口径收口（用户：「仔细再读一遍文案还有要改的吗，不要反复改了费劲」）。
+
+1. **删掉重复判定**：旧 `subagent-reuse-deny`（idle≥2 就拦 subagent）分支与 `subagent-not-allowed` 判定重叠，且旧文案会先命中（用户看到的仍是「【复用优先】当前有 N 位空闲成员」的旧口径）→ 整段删除，subagent 只保留 `subagent-not-allowed` 一条判定。
+2. 注入词 §二 L401：补「但还须满足下面『subagent 的正当用途只有两条』」。
+3. §五 L427：「能分给 subagent 的活」→「能派出去的活」（不再暗示 subagent 是正常通道）。
+4. §五 L428：「其余一律 teammate 或复用现有成员」→「其余一律先 send_message 复用空闲成员，无空闲再 spawn_teammate」（顺序与 L403 一致）。
+5. §五 L433 ⑤：末尾补「（被硬门拦下后的改道按第十一节，不再问用户。）」，与 §十一「不要问我」不再表面冲突。
+6. 测试 24：断言从旧 kind `subagent-reuse-deny` 改 `subagent-not-allowed`。
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `434AC54F9CD6EDFF`。
+
+## 1.5.8 — 2026-11-12
+
+文案整体统一（用户：「应该是 send_message 优先复用现有空闲成员。若无空闲成员请改用 spawn_teammate 建常驻成员不要问我，直接改道继续……要整体文字一起对应，不能改局部不要前后矛盾不要重复」）。
+
+三处文案统一为同一句式「**先 send_message 复用现有空闲成员；若无空闲成员，改用 spawn_teammate 建常驻成员。不要问我，直接改道继续。**」：
+
+1. `subagent-not-allowed` 拒绝文案（lib/index.js:1830）——删掉原来重复的两遍表述（spawn_teammate / send_message 各出现两次），顺序从「先建成员或复用」改成「先复用、无空闲才建」。
+2. 注入词 §四 L403「subagent 正当用途」——「其余一切情况」补上同样的复用优先顺序。
+3. 注入词 §十一 L457「被硬门拦下怎么办」——同样句式，删掉括号式并列「（spawn_teammate 建成员 / send_message 复用空闲成员）」。
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `78EAC71A23237901`。
+
+## 1.5.7 — 2026-11-12
+
+无人值守场景下被拦必须全自动改道（用户：「不能每次我都要回复一遍吧，如果无人值守呢」）。
+
+1. `subagent-not-allowed` 拒绝文案：把「不要问我，直接改道继续」升级为可照抄的下一步——`spawn_teammate(name="employee-N", description="...", prompt="...")` 建成员把活接过去，或 `send_message` 复用空闲成员；并写明「**无人值守时也必须自动改道，不许用 ask_user_question 打断用户**」。
+2. 注入词第十一节对应条目补「**无人值守场景下这是硬要求，禁止任何形式的「等用户回复」**」。
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `B5414570EF0F35D7`。
+
+## 1.5.6 — 2026-11-12
+
+被硬门拦下后不再让模型回头问用户（用户要求「拦住让他们弄 teammate 就行了」）。
+
+1. `subagent-not-allowed` 拒绝文案末尾追加「**不要问我，直接改道继续。**」。
+2. 注入词第十一节新增一条：「**被硬门拦下时不要用 ask_user_question 问用户「怎么办」** —— 按拒绝文案给的路直接改道（spawn_teammate 建成员 / send_message 复用空闲成员），继续把活做完再汇报。」
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `85158190BC5C1410`。
+
+实测依据：`session-a9b2659e` 两路无预设 subagent 均被拒（文案含「当前花名册 0 人、空闲 0 人」），但随后模型 `ask_user_question` 问「接下来走哪条路」——本版补上「不要问」的指令。
+
+## 1.5.5 — 2026-11-12
+
+注入词口径整体对齐（用户要求「关于开 subagent 要整体调整、不能矛盾」）。1.5.4 只改了第 401、403 行，但另外三处仍是旧口径，会诱导模型开 subagent：
+
+1. 第 409 行「选谁做」第②条：原「一次跑完再改就行 → subagent」→ 补「还得满足第二节那两条硬条件（必须指定预设 / 满员 16 且全忙），否则一律 teammate」。
+2. 第 421 行「先派给有空的人」第③条：原「全员在忙且没人空闲 → 才改开 subagent」→ 补「且团队已满 16 人」。
+3. 第 428 行「路数由…」：原「只有『必须换预设』才走 subagent」→ 改为「只有第二节那两条才走 subagent，其余一律 teammate 或复用现有成员」。
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `1F66A24642A7BCFA`。
+
+## 1.5.4 — 2026-11-12
+
+按用户拍板收紧 subagent 通道：**不再存在「优先选子代理」的默认路径**。
+
+**规则（用户原话口径）**
+
+1. 带 `agent_preset` 的 subagent —— 放行（预设任务只能走 subagent，如技能生成与管理大师）。
+2. 不带 `agent_preset` 的 subagent —— 只有「团队成员已满 16 人且全部在忙、确实没人可复用」才放行；其余一律 deny，拒绝文案写明当前花名册人数与空闲人数。
+3. 注入词第 403 行同步改成这两条正当用途，并写明「这条是硬门」。
+
+**1.5.3 一并合入**
+
+- 注入词第 401 行：subagent 前提加「确认这活不会再来第二遍」。
+- 曾新增 `subagent-unapproved`（同一 step ≥2 路无预设 subagent 且本 turn 没问过审批 → 拦），1.5.4 已用更严的 `subagent-not-allowed` 替换。
+
+**验证**
+
+`node --check` 0；`npm test` 126 通过 / 0 失败；四副本 SHA 全 `1C10CCF9403888BB`。
+
+## 1.5.2 — 2026-11-12
+
+修两个「并发场景下算错」的问题，都来自 9 场景实测。
+
+**修掉的真 bug**
+
+1. **冷启动并发盲区**：同一 step 里 3 路 subagent 是并行发起的，事件流里互相看不到（tool/call 要等调用返回才入库），原「数事件流」的 coldN 永远为 0，第 3 路拦不住。改成按会话 `coldStartBySession` Map 累计「已发起」路数（turn/step 变化时重置），第 3 路起 enforce 拦。
+2. **花名册 TTL 误伤**：`SPAWN_ROSTER_TTL_MS` 120s → 600s。实测 10 路测试里模型组织 10 条 prompt 花了 456s，超期后 10 条 spawn 全被「先查花名册」拒，刷新后重试才成功。600s 覆盖正常规划节奏。
+3. **跨会话花名册串味**：`refreshRoster` 的模块级 `lastRoster` 只按 `seq` 比对复用，新会话 seq 与旧会话撞号时，会把旧会话的 `at` 时间戳当成当前花名册时间 —— A 验收新会话第一轮 5 路 spawn 被误判「最近一次 list_agents 已是 1658 秒前（已过期）」全部拒绝。修法：缓存键加会话 id（`refreshRoster(events, sid)`，`lastRoster.sid` 不同即重算）。
+4. **拒绝文案写死「有效期 120 秒」**：TTL 早已是 600000ms，文案仍写 120 秒，与实际不符。改为 `Math.round(SPAWN_ROSTER_TTL_MS / 1000)` 动态输出。
+
+**验证**
+
+- `node --check` EXIT 0；`npm test` **126 通过 / 0 失败**；四副本 SHA 一致 `2208EBBB1634C116…`（测试夹具同步：`gate-f1f3f4f5.test.mjs` 的 TTL 标记与过期样本 120000→600000、200000→700000）。
+- 9 场景实测全过（4 基础 + A 依赖 / B 同文件冲突 / C 写+只读混合 + 10 路上限 + 派≥2路先审批 + 预设路由判定），详见 `docs/dev-log/2026-11-12-场景测试.md`。
+- **已知边界**：同一 step 内先 `list_agents` 再 `spawn` 不能刷新花名册（spawn 读到旧时间戳），必须分两步；TTL 600s 下这个坑只在跨 10 分钟时才复现。
+
+## 1.5.1 — 2026-11-12
+
+补上 P2 的冷启动缺口：**花名册为空时，无预设 subagent 也管得住**。
+
+1. 场景：`session-13d54dee` 全程 `spawn_teammate=0` / `send_message=0`（一个成员都没建），却开了 16 次 `subagent`，其中 9 次没有 `agent_preset`。P2 只拦「空闲 ≥2 时还开无预设 subagent」，而该会话 `idle=0`，所以一次都没触发。
+2. 修法：新增 `subagent-cold-start` 判定 —— 花名册为空或空闲 <2 时，同一 step 里连续开 ≥2 路无预设 `subagent`/`subagent_fork` 即记录；`spawnReuseGate=enforce` 时从第 3 路起直接拦，提示改用 `spawn_teammate` 或补 `agent_preset`。带 `agent_preset` 一律放行（预设任务只能走 subagent）。
+3. 改后全绿：`node --check` EXIT 0、`npm test` **126 通过 / 0 失败**、源码与三处实装副本 SHA256 一致 `F426CE88…`。
+
+## 1.5.0 — 2026-11-12
+
+硬门漏洞收口：把「拦截文案」「复用校验」「路数算法」三处不一致修掉。
+
+**修掉的真 bug**
+
+1. **P1 拦截文案新旧两套拼在一起**：`buildDenyReason` 前半段还在说「团队硬启动闸门 / 本轮还没有开团队 / 请按顺序做两步」，后半段才是「并行契约违约」，同一段话自相矛盾。现在整段重写为单一口径：只说明「本 turn 单步派活不足、你声明了 N 路、实际只发了 M 路」，并保留两种免派情形（`【不可拆·单步】` / `【独立完成】`）。
+2. **P2 `subagent` / `subagent_fork` 没有复用校验**：以前「复用优先」只拦 `spawn_teammate`，最贵的 `subagent` 通道可以随便开。现在无 `agent_preset`、花名册新鲜且空闲 ≥2 时记录 `subagent-reuse-deny`；`spawnReuseGate=enforce` 时直接拦，带 `agent_preset` 一律放行（预设任务只能走 subagent）。
+3. **P3 `countParallelTodos` 用「路数和」放大路数**：3 条各标 `【并行×3】` 会被算成 9 路（实测被放大到 12 → 10 路，模型只能靠改写 todo 绕开）。改为 `max(并行条目数, 单条最大路数)`：10 条不标 = 10 路；3 条各 ×3 = 3 路；1 条 ×10 = 10 路。
+
+**测试**
+
+4. `test/gate-140-features.test.mjs` 的 `subagent-reuse-hint` 断言与新版 kind 对齐为 `subagent-reuse-deny`。
+5. 改后全绿：`node --check` EXIT 0、`npm test` **126 通过 / 0 失败**、源码与三处实装副本 SHA256 一致。
 
 ## 1.4.0 — 2026-11-12
 
