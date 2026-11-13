@@ -11,6 +11,7 @@
   },
   "exports": {
     ".": "./lib/index.js",
+    "./icon": "./icon.svg",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -25,6 +26,7 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
+    "icon.svg",
     "locale/*.json",
     "!docs/dev-log/**"
   ],
@@ -53,6 +55,8 @@
     "并行"
   ],
   "dsh": {
+    "labels": ["remote-access", "prompt-modification"],
+    "capabilities": ["network:ingress", "system-prompt:write"],
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
