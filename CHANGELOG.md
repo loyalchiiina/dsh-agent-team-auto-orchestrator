@@ -1,3 +1,92 @@
+## [1.5.12] - 2026-11-16
+
+### 重构：注入词按「成员池」重写（用户口径：子代理即成员，池化复用 → 按差额补建）
+
+背景：内核已把 teammate 收进 `subagent`，成员跑完转 `inactive` 仍在 `list_agents` 里、可随时 `send_message`
+续聊、跨 turn 跨重启保留（已实测 4 个成员跨 3 次重启仍在）。旧注入词仍按「一次性子代理 vs 常驻 teammate」
+二分写，且含多条只为规避旧缺陷（不能对话、不能选预设、需凑满 16 人）而加的规则，属历史包袱。
+
+**注入词全文重写**：47 行 / 3,373 字符 → **35 行 / 约 1,700 字符**，九节改为
+〇 判定 / 一 委派判据 / 二 成员 / 三 成员池算法 / 四 路数与发出 / 五 本会话职责 / 六 任务板 / 七 预设路由 / 八 工具层门禁。
+
+- **新增「三 成员池算法」七步**（本版核心）：`list_agents` 取实时花名册并按 `status` 分 `running`/`inactive`
+  → 路数 N 由独立产出物数量决定 → 对 `min(N, 闲置数)` 个闲置成员 `send_message` 复用 → **差额 =
+  N − 闲置数 − 本次仍承接任务的在跑成员数**，差额 > 0 才 `subagent` 新建、一次建足 → 闲置成员不销毁、留给下一轮。
+- **委派判据改为「先判可拆分性、再看体量」**：只有 1 个产出物 → 本会话执行，不因体量改判（拆不开，派出去只多付一份前缀）；
+  能拆成 ≥2 个独立产出物、合计 ≥80 行才并行派活。删除原「单件 >150 行自己做」的写法（易被读成「行数多就自己做」）。
+- **删除 4 条旧缺陷补丁**：「能不能中途干预不是筛选条件」说明段、「本机只有 subagent 一个入口（旧 teammate 已不存在）」、
+  「`agent_preset` 可能 selection is disabled 不要反复试」、「要改宿主端代码 / 要重启才能验证的活留在主线自己做」
+  （后者被实测推翻：成员跨重启留存，重启后唤醒即可续）。
+- **预设口径改写**：成员一律带预设（显式 `agent_preset` 或继承主会话），不存在「无预设成员」；§七 改为按域匹配专用预设，
+  无对应预设则继承主会话预设后自建。
+
+### 单档制（用户拍板「一个挡位就行」）
+
+- `TIER_NAMES` 由 `["lean","balanced","turbo"]` → **`["default"]`**；`TIER_PRESETS` 只留 `default`，取原 turbo 参数
+  （`gateMinDispatches: 2` / `gateMaxParallel: 10` / `gateMaxStrikes: 4` / `waitAgentGate: enforce` /
+  `spawnReuseGate: enforce` / `maxMembers: 16` / `maxActiveSubagents: 16`）。
+- 新增 `LEGACY_TIER_ALIASES = { lean: "default", balanced: "default", turbo: "default" }`：
+  既有 `local.json` 里的 `"tier":"turbo"` 照常可用，**行为不变**（旧档名仅作别名，`build` 仍回显请求名）。
+- `benchParallel` 删掉 lean / balanced / turbo 三组，只留 `serial` 与 `current`。
+
+### 数值修正
+
+- `parallel-missed` 门：`countDistinctFiles >= 3` → **`>= 2`**（1.5.11 已改，本版随单档固化）。
+- 并行路数下限 `gateMinDispatches` **3 → 2**（「至少并行两路」）。
+- **`maxMembers` 与 `maxActiveSubagents` 对齐**：原 turbo 16/32、balanced 8/16、lean 4/8 —— 子代理即成员，
+  「16 个成员却允许 32 个并发子代理」逻辑不成立，统一为**两值相等**（现 16/16）。
+
+### 门禁语义变更
+
+- 撤销「无预设 `subagent` 才查复用」（每个成员都带预设 → 该分支永不命中），改为
+  **「有闲置却新建」软告警**：`subagent` 调用时若花名册存在 `inactive` 成员，记 `gateLog` 一条
+  `kind: "subagent-idle-available"`（带 `idle` 数），**只留痕、不拦截** —— 避免挡掉「复用 N + 按差额补建」的正当新建。
+  复用决策由注入词 §三 软约束，`parallel-missed` 硬门仍保证「该并行时一定并行」。
+
+### 测试
+
+- `test/config-tier-spawnreuse.test.mjs`：#01/#02/#03 断言由「三档」改为「单档 default」（旧档名走别名仍返回 `enforce`）；
+  #11 期望档名保持 `turbo`（`build` 回显请求名，非预设键名）。
+- 全量：**126 通过 / 0 失败**（9 + 16 + 7 + 27 + 18 + 30 + 19），`node --check` exit 0。
+
+---
+
+## [1.5.11] - 2026-11-16
+
+### 修复：注入词指向已被内核收走的工具（用户 2026-11-16 报「并行 teammate 很难触发」）
+
+背景（实测）：本机内核已把「智能体团队」能力收进核心工具集 —— 建成员只剩 `subagent`（带 `agent_preset`），
+`spawn_teammate` **本会话不暴露**（`app.asar` 里仅剩 16 处 UI 标题映射与 toolview 分支残留）；跑完的 subagent
+以 inactive 成员身份留在 `list_agents`，可按名字 `send_message` 续聊（已实测）。而本插件仍在 30 处文案里让模型
+「改用 spawn_teammate 建常驻成员」，并保留「团队满 16 人才准用无预设 subagent」——该前提本机永不成立，
+两处叠加导致「要么被拦、要么按不存在的工具改道」，于是并行几乎无法启动。
+
+### 门槛放宽（用户批准）
+
+- **复杂度下限**：≥3 个产出物且每个 ≥50 行 → **≥2 个产出物（各写不同文件）且合计预计 ≥80 行** 就必须派活；
+  单件 >150 行仍自己做；≥2 但合计 <80 行自己做。
+- **`parallel-missed` 门**：判据 `countDistinctFiles >= 3` → **`>= 2`**；拒绝文案同步改成 1.5.11 口径并指向 `subagent`。
+- **无预设 subagent 的放行条件**：`rosterTotal >= 16 && idleCount === 0` → **`idleCount === 0 || rosterTotal < 0`**
+  （有活跃成员可复用就拦，没空闲就放行；花名册未加载时放行）。**不再要求团队满 16 人。**
+
+### 文案对齐（17 处，全部 `spawn_teammate` → `subagent` 或删除「满 16」前提）
+
+L396 / L401 / L402 / L403 / L404 / L407 / L409 / L410 / L422 / L426 / L429 / L433 / L438 / L453 / L458 /
+L475 / L477 / L1429 / L1436 / L1438 / L1548 / L1783 / L1831 / L2068。
+
+### 验证
+
+- `node --check lib/index.js` → **exit 0**
+- `npm test`（7 个测试文件串联）→ **30 通过 / 0 失败**；`verify-tool` → **19 通过 / 0 失败**；总 exit 0
+- 4 个安装路径实为 **1 实体 + 3 Junction**（均指向 `C:\Users\Administrator\.dsh\local-plugins\dsh-team-orchestrator`），
+  `lib/index.js` sha16 = `7CD7E6829B060A5E` 四处一致 → 改实体即全局生效
+- 待重启生效（注入词在宿主启动时装载）
+
+### 图标配色：写死品牌色，深色主题下不再看不清
+
+- 根因：原 `icon.svg` 用 `stroke="currentColor"`，而 DSH 以 `<img>` / CSS `background-image`（data-URI）方式渲染插件图标，SVG 作为独立文档时 `currentColor` 取初始值黑色 —— 深色主题深底上几乎不可见。
+- 改法：`currentColor` → 写死品牌色 `#4C7DFF`；几何、`viewBox`、线宽一律不变；浅色（#F2F3F5）与深色（#212227）两种底色实测均清晰。
+
 ## [1.5.10] - 2026-11-12
 
 ### 复杂任务自动开团队（用户拍板的界限判据）

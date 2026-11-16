@@ -33,18 +33,18 @@ const C = new Function(
 // 自定义档的 5 个旧键（1.1.2 时代就有的，必须全填才合法）
 const LEGACY = { gateMinDispatches: 2, gateMaxParallel: 6, gateMaxStrikes: 4, waitAgentGate: "warn", enforceTeamGate: "on" };
 
-// 01 三个档位都在，且每档都带 spawnReuseGate（少一个 = 该档退回 undefined = 读取点兜底 enforce，等于该档没配）
-t("01", "#1 三档预设都声明了 spawnReuseGate",
-  C.TIER_NAMES.map((k) => typeof C.TIER_PRESETS[k].spawnReuseGate), ["string", "string", "string"]);
+// 01 单档制：只有一个档位 default，且带 spawnReuseGate（缺失 = 读取点兜底 enforce，等于该档没配）
+t("01", "#1 单档 default 声明了 spawnReuseGate",
+  C.TIER_NAMES.map((k) => typeof C.TIER_PRESETS[k].spawnReuseGate), ["string"]);
 
-// 02 默认值分布：lean 只观测（warn）、balanced/turbo 拦截（enforce）—— 与各档严格度同向
-t("02", "#1 档位默认值：lean=warn / balanced=enforce / turbo=enforce",
-  C.TIER_NAMES.map((k) => C.TIER_PRESETS[k].spawnReuseGate), ["warn", "enforce", "enforce"]);
+// 02 单档制默认值：统一拦截（enforce）
+t("02", "#1 档位默认值：default=enforce",
+  C.TIER_NAMES.map((k) => C.TIER_PRESETS[k].spawnReuseGate), ["enforce"]);
 
-// 03 走真实合成器拿三档生效值（不是直接读常量）—— 证明 buildActiveTier 没把字段吃掉
-t("03", "#1 buildActiveTier 三档都透传 spawnReuseGate",
+// 03 走真实合成器拿生效值（不是直接读常量）—— 证明 buildActiveTier 没把字段吃掉；旧档名 lean/balanced/turbo 均为 default 别名
+t("03", "#1 buildActiveTier 单档透传 spawnReuseGate（旧档名走别名）",
   [C.build("lean").spawnReuseGate, C.build("balanced").spawnReuseGate, C.build("turbo").spawnReuseGate],
-  ["warn", "enforce", "enforce"]);
+  ["enforce", "enforce", "enforce"]);
 
 // 04 非法档名 → custom 态，走 baseline
 t("04", "#1 非法档名回落 custom 态，取 baseline 的 enforce",
@@ -91,7 +91,7 @@ t("11", "#7 turbo + {enforceTeamGate:off} → 实际生效 false，source 仍 ti
 const turboSpawnOff = C.build("turbo", { spawnReuseGate: "off" });
 t("12", "#7 turbo + {spawnReuseGate:off} → off，且未提供的键仍取 preset",
   [turboSpawnOff.spawnReuseGate, turboSpawnOff.gateMaxParallel, turboSpawnOff.gateMinDispatches, turboSpawnOff.overriddenKeys],
-  ["off", 10, 3, ["spawnReuseGate"]]);
+  ["off", 10, 2, ["spawnReuseGate"]]);
 
 // 13 什么都不提供 → 与直接 build("turbo") 完全一致（覆盖逻辑不得污染默认路径）
 t("13", "#7 turbo + {} → 与 build(turbo) 逐字段一致，overriddenKeys=[]",

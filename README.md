@@ -10,6 +10,10 @@
 
 DSH 智能体团队编排器（纯宿主插件，无客户端 UI）。
 
+> **为什么没有市场截图**：本插件没有独立界面 —— 它常驻把团队协作纪律与预设路由规则注入到对话里（规则/编排包），界面表现为对话中的提示词，没有自有面板可截。
+>
+> **Why there are no screenshots**: No standalone UI - it injects team-collaboration and preset-routing rules into the conversation (a rule/orchestration bundle).
+
 ## 它解决什么问题
 
 - **规则只在「技能被加载时」存在**：技能是机会主义的，模型想不起来加载就没有规则。本插件把编排铁律做成常驻 prompt 段，与是否加载技能无关。
