@@ -1,3 +1,34 @@
+## [1.5.14] - 2026-11-16
+
+### 修：turn 边界从不重置 → `parallel-missed` 分支不可达
+
+**现象**（1.5.13 重启验收时暴露）：长会话里 `parallel-missed` 从不触发。拦截原文写着「本 turn 单步最多只发了 2 路」——
+早先派过的峰值一直挂着，判据要求 `turnMaxStepDispatch === 0`，于是这个分支永远走不到。
+
+**根因**：闸门原本靠 `type === "turn/start"` / `"step/start"` 切 turn，但在
+`C:\Users\Administrator\AppData\Local\Programs\DSH NEXT\resources\app.asar` 的 7.6 MB 头部索引里 grep，
+`turn/start` / `step/start` / `tool/call` / `message_start` **全部 0 命中** —— 这些事件名宿主根本不发，
+两个分支是死代码（长期靠 `tool/call` 的 `data.step` 兜底）。没有 turn 边界，`turnMax` 只能一路累加。
+
+**修法**：改用插件自己**必然收到**的用户轮次信号 `ctx.on("agent/inbox/claimed")`。
+- 新增模块级 `var userTurnBoundary = new Map();`
+- `agent/inbox/claimed` 处理器里（`gateStrikes.delete(sid)` 之后）记
+  `userTurnBoundary.set(sid, { seen: true, ts: Date.now(), turn: turn });`
+- 闸门取边界三级：① 用 `userTurnBoundary.get(sid).ts`，从事件流末尾向前找**最靠前**的
+  `ts >= boundaryTs` 事件作为扫描起点（时间戳兼容 `ev.ts` / `ev.time` / `ev.data.ts`）；
+  ② 回退找 `turn/start` 或 `message/start` 且 `role !== "assistant"`；
+  ③ 都没有 → `scanFrom = 0`（= 1.5.13 及之前行为，保证离线极简事件流不误伤）
+- 事件扫描循环由 `for (var ev of events)` 改为按 `scanFrom` 下标起扫。
+
+**过程中踩的两个坑（已修）**：
+1. 测试用 `new Function` 切片执行闸门体，`userTurnBoundary` 不在切片作用域内 → `ReferenceError`。
+   加 `try { ... } catch (_eB) { boundaryTs = null; }` 包住，切片环境自动落到回退分支。
+2. 初版「回退 2」从事件流末尾往前扫却取**第一个赋值**（= 最靠后的下标），导致 `scanFrom` 落在末尾、
+   todo 与派活全被跳过 → `gate-b.test.mjs` 的 09/10/16 三条 FAIL。整段删除回退 2，只留 `scanFrom = 0`。
+
+**验证**：`node --check` exit 0；`npm test` 9+16+7+27+18+30+19 **全通过 0 失败**，exit 0。
+待新会话实测：`parallel-missed` 应在「todo 出现 ≥2 个产出文件名 + 本 turn 0 派活」时正常触发。
+
 ## [1.5.13] - 2026-11-16
 
 ### 修：拒绝文案三处旧口径 + 并行标记误判（1.5.12 重启验收时暴露）
