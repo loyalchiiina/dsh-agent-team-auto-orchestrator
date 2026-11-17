@@ -6,7 +6,7 @@
 早先派过的峰值一直挂着，判据要求 `turnMaxStepDispatch === 0`，于是这个分支永远走不到。
 
 **根因**：闸门原本靠 `type === "turn/start"` / `"step/start"` 切 turn，但在
-`C:\Users\Administrator\AppData\Local\Programs\DSH NEXT\resources\app.asar` 的 7.6 MB 头部索引里 grep，
+`<DSH 安装目录>\resources\app.asar` 的 7.6 MB 头部索引里 grep，
 `turn/start` / `step/start` / `tool/call` / `message_start` **全部 0 命中** —— 这些事件名宿主根本不发，
 两个分支是死代码（长期靠 `tool/call` 的 `data.step` 兜底）。没有 turn 边界，`turnMax` 只能一路累加。
 
@@ -123,7 +123,7 @@ L475 / L477 / L1429 / L1436 / L1438 / L1548 / L1783 / L1831 / L2068。
 
 - `node --check lib/index.js` → **exit 0**
 - `npm test`（7 个测试文件串联）→ **30 通过 / 0 失败**；`verify-tool` → **19 通过 / 0 失败**；总 exit 0
-- 4 个安装路径实为 **1 实体 + 3 Junction**（均指向 `C:\Users\Administrator\.dsh\local-plugins\dsh-team-orchestrator`），
+- 4 个安装路径实为 **1 实体 + 3 Junction**（均指向 `<DSH_HOME>\local-plugins\dsh-team-orchestrator`），
   `lib/index.js` sha16 = `7CD7E6829B060A5E` 四处一致 → 改实体即全局生效
 - 待重启生效（注入词在宿主启动时装载）
 
